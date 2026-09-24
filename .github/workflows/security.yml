@@ -4,9 +4,12 @@ on:
   push:
     branches:
       - main
+      - dev
+
   pull_request:
     branches:
       - main
+      - dev
 
 permissions:
   contents: read
@@ -24,7 +27,7 @@ jobs:
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v4
         with:
-          languages: powershell
+          languages: actions
 
       - name: Analyze
         uses: github/codeql-action/analyze@v4
