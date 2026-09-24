@@ -1,5 +1,5 @@
 # Windows Maintenance Toolkit
-
+[![PowerShell CI](https://github.com/Optiserve-Dvelopent/windows-maintenance-toolkit/actions/workflows/powershell.yml/badge.svg)](https://github.com/Optiserve-Dvelopent/windows-maintenance-toolkit/actions/workflows/powershell.yml)
 A PowerShell toolkit for optimizing, cleaning, and maintaining Windows 11 systems.
 
 The **Windows Maintenance Toolkit** provides a collection of practical system maintenance and performance optimization tasks without relying on third-party "PC booster" software.
