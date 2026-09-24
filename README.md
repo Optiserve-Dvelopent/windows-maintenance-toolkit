@@ -1,9 +1,7 @@
 # Windows Maintenance Toolkit
 
 [![PowerShell CI](https://github.com/Optiserve-Dvelopent/windows-maintenance-toolkit/actions/workflows/powershell.yml/badge.svg)](https://github.com/Optiserve-Dvelopent/windows-maintenance-toolkit/actions/workflows/powershell.yml)
-[![Security](https://github.com/Optiserve-Dvelopent/windows-maintenance-toolkit/actions/workflows/security.yml/badge.svg)](https://github.com/Optiserve-Dvelopent/windows-maintenance-toolkit/actions/workflows/security.yml)
-[![Latest Release](https://img.shields.io/github/v/release/Optiserve-Dvelopent/windows-maintenance-toolkit)](https://github.com/Optiserve-Dvelopent/windows-maintenance-toolkit/releases)
-
+[![Latest Release](https://img.shields.io/github/v/release/Optiserve-Dvelopent/windows-maintenance-toolkit?display_name=tag)](https://github.com/Optiserve-Dvelopent/windows-maintenance-toolkit/releases)
 
 
 A PowerShell toolkit for optimizing, cleaning, and maintaining Windows 11 systems.
