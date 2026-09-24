@@ -1,3 +1,6 @@
+﻿[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidUsingWriteHost', '', Justification='Interactive console script uses Write-Host for colored status output.')]
+param()
+
 # ============================================================
 # Windows 11 Performance Optimizer
 # ============================================================
