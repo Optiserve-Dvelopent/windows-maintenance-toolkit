@@ -27,13 +27,13 @@ Each action is logged to `logs/maintenance.log`.
 ## Project structure
 
 ```text
-winop/
-├── optimize.ps1
-├── README.md
-├── LICENSE
-├── logs/
-│   └── maintenance.log
-└── .gitignore
+    windows-maintenance-toolkit/
+     ├── optimize.ps1
+     ├── README.md
+     ├── LICENSE
+     ├── .gitignore
+     └── logs/               (created on first run)
+         └── maintenance.log
 ```
 
 ## Usage
