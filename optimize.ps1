@@ -40,6 +40,7 @@ Write-Host "CPU:     $($cpu.Name)"
 Write-Host "RAM:     $ram GB"
 Write-Host "Storage: $freeSpace GB frei / $totalSpace GB"
 Write-Host ""
+Write-Host "Systeminformationen abgeschlossen." -ForegroundColor Green
 
 # ------------------------------------------------------------
 # 2. Temporäre Dateien
@@ -56,6 +57,7 @@ foreach ($path in $tempPaths) {
     if (Test-Path $path) {
         Get-ChildItem $path -Force -ErrorAction SilentlyContinue |
         Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+        Write-Host "Bereinigt: $path" -ForegroundColor Green
     }
 }
 
@@ -67,8 +69,8 @@ Write-Host "Temporäre Dateien bereinigt." -ForegroundColor Green
 
 Write-Host "[3/8] DNS-Cache leeren..." -ForegroundColor Yellow
 
+Write-Host "DNS-Cache wird geleert..." -ForegroundColor Yellow
 Clear-DnsClientCache
-
 Write-Host "DNS-Cache geleert." -ForegroundColor Green
 
 # ------------------------------------------------------------
