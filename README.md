@@ -114,3 +114,5 @@ This project is licensed under the MIT License. See the [LICENSE](LICENSE) file 
 - The script creates the `logs` directory automatically if it does not exist.
 - Actions are written to a log file for troubleshooting and review.
 - The interface is menu-based and designed for interactive local maintenance tasks.
+
+![Repo Size](https://img.shields.io/github/repo-size/Optiserve-Dvelopent/windows-maintenance-toolkit)
