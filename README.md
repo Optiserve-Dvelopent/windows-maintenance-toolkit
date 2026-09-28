@@ -1,5 +1,7 @@
 # Windows Maintenance Toolkit
 
+![GitHub Release](https://img.shields.io/github/v/release/Optiserve-Dvelopent/windows-maintenance-toolkit?display_name=release)
+
 A lightweight PowerShell utility for routine Windows maintenance and cleanup. This project provides a menu-driven script that helps clean temporary files, clear cached data, repair system files, and apply a few common maintenance actions without relying on third-party optimizer software.
 
 ## What this project does
