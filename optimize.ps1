@@ -1,4 +1,4 @@
-﻿[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidUsingWriteHost', '', Justification='Interactive console script uses Write-Host for colored status output.')]
+﻿[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidUsingWriteHost', '', Justification = 'Interactive console script uses Write-Host for colored status output.')]
 param()
 
 # ============================================================
@@ -7,7 +7,7 @@ param()
 
 # Als Administrator ausführen
 $isAdmin = ([Security.Principal.WindowsPrincipal] `
-    [Security.Principal.WindowsIdentity]::GetCurrent()
+        [Security.Principal.WindowsIdentity]::GetCurrent()
 ).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 
 if (-not $isAdmin) {
@@ -31,9 +31,14 @@ $os = Get-CimInstance Win32_OperatingSystem
 $cpu = Get-CimInstance Win32_Processor | Select-Object -First 1
 $ram = [math]::Round($os.TotalVisibleMemorySize / 1MB, 1)
 
+$disk = Get-CimInstance Win32_LogicalDisk -Filter "DeviceID='C:'"
+$freeSpace = [math]::Round($disk.FreeSpace / 1GB, 1)
+$totalSpace = [math]::Round($disk.Size / 1GB, 1)
+
 Write-Host "Windows: $($os.Caption)"
-Write-Host "CPU: $($cpu.Name)"
-Write-Host "RAM: $ram GB"
+Write-Host "CPU:     $($cpu.Name)"
+Write-Host "RAM:     $ram GB"
+Write-Host "Storage: $freeSpace GB frei / $totalSpace GB"
 Write-Host ""
 
 # ------------------------------------------------------------
@@ -50,7 +55,7 @@ $tempPaths = @(
 foreach ($path in $tempPaths) {
     if (Test-Path $path) {
         Get-ChildItem $path -Force -ErrorAction SilentlyContinue |
-            Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+        Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
     }
 }
 
@@ -91,7 +96,7 @@ sfc.exe /scannow
 Write-Host "[6/8] Energieprofil konfigurieren..." -ForegroundColor Yellow
 
 $highPerformance = powercfg -list |
-    Select-String "High performance|Höchstleistung"
+Select-String "High performance|Höchstleistung"
 
 if ($highPerformance) {
 
@@ -102,7 +107,8 @@ if ($highPerformance) {
         Write-Host "Höchstleistung aktiviert." -ForegroundColor Green
     }
 
-} else {
+}
+else {
 
     # Höchstleistungsprofil erzeugen
     powercfg -duplicatescheme SCHEME_MAX
@@ -170,8 +176,8 @@ Write-Host ""
 Write-Host "Autostart-Programme:" -ForegroundColor Cyan
 
 Get-CimInstance Win32_StartupCommand |
-    Select-Object Name, Command, Location |
-    Format-Table -AutoSize
+Select-Object Name, Command, Location |
+Format-Table -AutoSize
 
 Write-Host ""
 Write-Host "Fertig." -ForegroundColor Green
