@@ -25,7 +25,7 @@ if (-not (Test-Path $logDirectory)) {
     Out-Null
 }
 
-function Write-Log {
+function Write-AppLog {
     param(
         [Parameter(Mandatory = $true)]
         [string]$Message,
@@ -35,7 +35,6 @@ function Write-Log {
     )
 
     $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-
     $entry = "[$timestamp] [$Level] $Message"
 
     try {
@@ -45,7 +44,7 @@ function Write-Log {
             -ErrorAction Stop
     }
     catch {
-        # Logging darf das Hauptprogramm nicht stoppen
+        Write-Verbose "Logging fehlgeschlagen: $($_.Exception.Message)"
     }
 }
 
@@ -62,14 +61,17 @@ $isAdmin = ([Security.Principal.WindowsPrincipal] `
 if (-not $isAdmin) {
 
     Write-Host ""
-    Write-Host "Bitte PowerShell als Administrator starten." `
+    Write-Host `
+        "Bitte PowerShell als Administrator starten." `
         -ForegroundColor Red
     Write-Host ""
 
     exit 1
 }
 
-Write-Log "Windows Maintenance Toolkit gestartet." "INFO"
+Write-AppLog `
+    "Windows Maintenance Toolkit gestartet." `
+    "INFO"
 
 # ============================================================
 # Header
@@ -78,35 +80,44 @@ Write-Log "Windows Maintenance Toolkit gestartet." "INFO"
 Clear-Host
 
 Write-Host ""
-Write-Host "========================================" `
+Write-Host `
+    "========================================" `
     -ForegroundColor Cyan
-Write-Host " Windows Maintenance Toolkit v1.1" `
+
+Write-Host `
+    " Windows Maintenance Toolkit v1.1" `
     -ForegroundColor Cyan
-Write-Host "========================================" `
+
+Write-Host `
+    "========================================" `
     -ForegroundColor Cyan
+
 Write-Host ""
 
 # ============================================================
-# Funktionen
-# ============================================================
-
-# ------------------------------------------------------------
 # 1. Systeminformationen
-# ------------------------------------------------------------
+# ============================================================
 
 function Show-SystemInfo {
 
     Clear-Host
 
-    Write-Host "========================================" `
+    Write-Host `
+        "========================================" `
         -ForegroundColor Cyan
-    Write-Host " Systeminformationen" `
+
+    Write-Host `
+        " Systeminformationen" `
         -ForegroundColor Cyan
-    Write-Host "========================================" `
+
+    Write-Host `
+        "========================================" `
         -ForegroundColor Cyan
+
     Write-Host ""
 
-    Write-Log "Systeminformationen werden abgerufen."
+    Write-AppLog `
+        "Systeminformationen werden abgerufen."
 
     try {
 
@@ -127,9 +138,14 @@ function Show-SystemInfo {
         Write-Host "CPU:     $($cpu.Name)"
         Write-Host "RAM:     $ram GB"
 
-        Write-Log "Windows: $($os.Caption)"
-        Write-Log "CPU: $($cpu.Name)"
-        Write-Log "RAM: $ram GB"
+        Write-AppLog `
+            "Windows: $($os.Caption)"
+
+        Write-AppLog `
+            "CPU: $($cpu.Name)"
+
+        Write-AppLog `
+            "RAM: $ram GB"
 
         if ($disk) {
 
@@ -143,9 +159,10 @@ function Show-SystemInfo {
                 1
             )
 
-            Write-Host "Storage: $freeSpace GB frei / $totalSpace GB"
+            Write-Host `
+                "Storage: $freeSpace GB frei / $totalSpace GB"
 
-            Write-Log `
+            Write-AppLog `
                 "Storage: $freeSpace GB frei / $totalSpace GB"
         }
         else {
@@ -154,27 +171,30 @@ function Show-SystemInfo {
                 "Storage: C: konnte nicht ermittelt werden." `
                 -ForegroundColor DarkYellow
 
-            Write-Log `
+            Write-AppLog `
                 "C: Speicher konnte nicht ermittelt werden." `
                 "WARNING"
         }
 
         Write-Host ""
-        Write-Host "Systeminformationen erfolgreich abgerufen." `
+
+        Write-Host `
+            "Systeminformationen erfolgreich abgerufen." `
             -ForegroundColor Green
 
-        Write-Log `
+        Write-AppLog `
             "Systeminformationen erfolgreich abgerufen." `
             "SUCCESS"
     }
     catch {
 
         Write-Host ""
+
         Write-Host `
             "Fehler beim Abrufen der Systeminformationen." `
             -ForegroundColor Red
 
-        Write-Log `
+        Write-AppLog `
             "Fehler bei Systeminformationen: $($_.Exception.Message)" `
             "ERROR"
     }
@@ -183,23 +203,29 @@ function Show-SystemInfo {
     Read-Host "Enter drücken"
 }
 
-# ------------------------------------------------------------
+# ============================================================
 # 2. Clean Up
-# ------------------------------------------------------------
+# ============================================================
 
 function Invoke-Cleanup {
 
     Clear-Host
 
-    Write-Host "========================================" `
+    Write-Host `
+        "========================================" `
         -ForegroundColor Cyan
-    Write-Host " Clean Up" `
+
+    Write-Host `
+        " Clean Up" `
         -ForegroundColor Cyan
-    Write-Host "========================================" `
+
+    Write-Host `
+        "========================================" `
         -ForegroundColor Cyan
+
     Write-Host ""
 
-    Write-Log "Cleanup gestartet."
+    Write-AppLog "Cleanup gestartet."
 
     $tempPaths = @(
         $env:TEMP,
@@ -210,17 +236,19 @@ function Invoke-Cleanup {
 
         if (-not (Test-Path $path)) {
 
-            Write-Log `
+            Write-AppLog `
                 "Temp-Pfad nicht gefunden: $path" `
                 "WARNING"
 
             continue
         }
 
-        Write-Host "Bereinige: $path" `
+        Write-Host `
+            "Bereinige: $path" `
             -ForegroundColor Yellow
 
-        Write-Log "Bereinige: $path"
+        Write-AppLog `
+            "Bereinige: $path"
 
         $items = Get-ChildItem `
             -Path $path `
@@ -246,7 +274,7 @@ function Invoke-Cleanup {
 
                 $failed++
 
-                Write-Log `
+                Write-AppLog `
                     "Datei konnte nicht entfernt werden: $($item.FullName)" `
                     "WARNING"
             }
@@ -256,7 +284,7 @@ function Invoke-Cleanup {
             "Entfernt: $removed" `
             -ForegroundColor Green
 
-        Write-Log `
+        Write-AppLog `
             "Entfernt aus $path : $removed Dateien."
 
         if ($failed -gt 0) {
@@ -265,7 +293,7 @@ function Invoke-Cleanup {
                 "Übersprungen: $failed" `
                 -ForegroundColor DarkYellow
 
-            Write-Log `
+            Write-AppLog `
                 "Übersprungen: $failed Dateien." `
                 "WARNING"
         }
@@ -277,10 +305,12 @@ function Invoke-Cleanup {
     # Papierkorb
     # --------------------------------------------------------
 
-    Write-Host "Leere Papierkorb..." `
+    Write-Host `
+        "Leere Papierkorb..." `
         -ForegroundColor Yellow
 
-    Write-Log "Papierkorb wird geleert."
+    Write-AppLog `
+        "Papierkorb wird geleert."
 
     try {
 
@@ -292,7 +322,7 @@ function Invoke-Cleanup {
             "Papierkorb geleert." `
             -ForegroundColor Green
 
-        Write-Log `
+        Write-AppLog `
             "Papierkorb erfolgreich geleert." `
             "SUCCESS"
     }
@@ -302,7 +332,7 @@ function Invoke-Cleanup {
             "Papierkorb konnte nicht geleert werden." `
             -ForegroundColor DarkYellow
 
-        Write-Log `
+        Write-AppLog `
             "Papierkorb konnte nicht geleert werden." `
             "WARNING"
     }
@@ -312,10 +342,13 @@ function Invoke-Cleanup {
     # --------------------------------------------------------
 
     Write-Host ""
-    Write-Host "Leere DNS-Cache..." `
+
+    Write-Host `
+        "Leere DNS-Cache..." `
         -ForegroundColor Yellow
 
-    Write-Log "DNS-Cache wird geleert."
+    Write-AppLog `
+        "DNS-Cache wird geleert."
 
     try {
 
@@ -326,7 +359,7 @@ function Invoke-Cleanup {
             "DNS-Cache geleert." `
             -ForegroundColor Green
 
-        Write-Log `
+        Write-AppLog `
             "DNS-Cache erfolgreich geleert." `
             "SUCCESS"
     }
@@ -336,16 +369,18 @@ function Invoke-Cleanup {
             "DNS-Cache konnte nicht geleert werden." `
             -ForegroundColor DarkYellow
 
-        Write-Log `
+        Write-AppLog `
             "DNS-Cache konnte nicht geleert werden." `
             "WARNING"
     }
 
     Write-Host ""
-    Write-Host "Cleanup abgeschlossen." `
+
+    Write-Host `
+        "Cleanup abgeschlossen." `
         -ForegroundColor Green
 
-    Write-Log `
+    Write-AppLog `
         "Cleanup abgeschlossen." `
         "SUCCESS"
 
@@ -353,23 +388,30 @@ function Invoke-Cleanup {
     Read-Host "Enter drücken"
 }
 
-# ------------------------------------------------------------
+# ============================================================
 # 3. DNS Cache
-# ------------------------------------------------------------
+# ============================================================
 
 function Clear-DNSCache {
 
     Clear-Host
 
-    Write-Host "========================================" `
+    Write-Host `
+        "========================================" `
         -ForegroundColor Cyan
-    Write-Host " DNS Cache" `
+
+    Write-Host `
+        " DNS Cache" `
         -ForegroundColor Cyan
-    Write-Host "========================================" `
+
+    Write-Host `
+        "========================================" `
         -ForegroundColor Cyan
+
     Write-Host ""
 
-    Write-Log "Manuelle DNS-Cache-Bereinigung gestartet."
+    Write-AppLog `
+        "Manuelle DNS-Cache-Bereinigung gestartet."
 
     try {
 
@@ -380,7 +422,7 @@ function Clear-DNSCache {
             "DNS-Cache erfolgreich geleert." `
             -ForegroundColor Green
 
-        Write-Log `
+        Write-AppLog `
             "DNS-Cache erfolgreich geleert." `
             "SUCCESS"
     }
@@ -390,7 +432,7 @@ function Clear-DNSCache {
             "DNS-Cache konnte nicht geleert werden." `
             -ForegroundColor Red
 
-        Write-Log `
+        Write-AppLog `
             "DNS-Cache konnte nicht geleert werden: $($_.Exception.Message)" `
             "ERROR"
     }
@@ -399,23 +441,30 @@ function Clear-DNSCache {
     Read-Host "Enter drücken"
 }
 
-# ------------------------------------------------------------
+# ============================================================
 # 4. Component Store
-# ------------------------------------------------------------
+# ============================================================
 
 function Invoke-ComponentCleanup {
 
     Clear-Host
 
-    Write-Host "========================================" `
+    Write-Host `
+        "========================================" `
         -ForegroundColor Cyan
-    Write-Host " Windows Component Store" `
+
+    Write-Host `
+        " Windows Component Store" `
         -ForegroundColor Cyan
-    Write-Host "========================================" `
+
+    Write-Host `
+        "========================================" `
         -ForegroundColor Cyan
+
     Write-Host ""
 
-    Write-Log "Component Store Bereinigung gestartet."
+    Write-AppLog `
+        "Component Store Bereinigung gestartet."
 
     Write-Host `
         "Komponentenbereinigung wird gestartet..." `
@@ -429,22 +478,24 @@ function Invoke-ComponentCleanup {
     if ($LASTEXITCODE -eq 0) {
 
         Write-Host ""
+
         Write-Host `
             "Komponentenbereinigung abgeschlossen." `
             -ForegroundColor Green
 
-        Write-Log `
+        Write-AppLog `
             "Component Store erfolgreich bereinigt." `
             "SUCCESS"
     }
     else {
 
         Write-Host ""
+
         Write-Host `
             "DISM meldete einen Fehler. Exit Code: $LASTEXITCODE" `
             -ForegroundColor Red
 
-        Write-Log `
+        Write-AppLog `
             "DISM Fehler. Exit Code: $LASTEXITCODE" `
             "ERROR"
     }
@@ -453,23 +504,30 @@ function Invoke-ComponentCleanup {
     Read-Host "Enter drücken"
 }
 
-# ------------------------------------------------------------
+# ============================================================
 # 5. Systemdateien prüfen
-# ------------------------------------------------------------
+# ============================================================
 
 function Invoke-SystemRepair {
 
     Clear-Host
 
-    Write-Host "========================================" `
+    Write-Host `
+        "========================================" `
         -ForegroundColor Cyan
-    Write-Host " Systemdateien prüfen" `
+
+    Write-Host `
+        " Systemdateien prüfen" `
         -ForegroundColor Cyan
-    Write-Host "========================================" `
+
+    Write-Host `
+        "========================================" `
         -ForegroundColor Cyan
+
     Write-Host ""
 
-    Write-Log "SFC Systemdateiprüfung gestartet."
+    Write-AppLog `
+        "SFC Systemdateiprüfung gestartet."
 
     Write-Host `
         "SFC wird gestartet..." `
@@ -487,7 +545,7 @@ function Invoke-SystemRepair {
             "Systemdateiprüfung abgeschlossen." `
             -ForegroundColor Green
 
-        Write-Log `
+        Write-AppLog `
             "SFC erfolgreich abgeschlossen." `
             "SUCCESS"
     }
@@ -497,7 +555,7 @@ function Invoke-SystemRepair {
             "SFC meldete einen Fehler oder ein Problem." `
             -ForegroundColor DarkYellow
 
-        Write-Log `
+        Write-AppLog `
             "SFC Exit Code: $LASTEXITCODE" `
             "WARNING"
     }
@@ -506,74 +564,101 @@ function Invoke-SystemRepair {
     Read-Host "Enter drücken"
 }
 
-# ------------------------------------------------------------
+# ============================================================
 # 6. Energieprofil
-# ------------------------------------------------------------
+# ============================================================
 
 function Set-HighPerformance {
+    [CmdletBinding(
+        SupportsShouldProcess = $true,
+        ConfirmImpact = 'Medium'
+    )]
+    param()
 
     Clear-Host
 
-    Write-Host "========================================" `
+    Write-Host `
+        "========================================" `
         -ForegroundColor Cyan
-    Write-Host " Energieprofil" `
+
+    Write-Host `
+        " Energieprofil" `
         -ForegroundColor Cyan
-    Write-Host "========================================" `
+
+    Write-Host `
+        "========================================" `
         -ForegroundColor Cyan
+
     Write-Host ""
 
-    Write-Log "Energieprofil Höchstleistung wird aktiviert."
+    Write-AppLog `
+        "Energieprofil Höchstleistung wird aktiviert."
 
     Write-Host `
         "Aktiviere Höchstleistung..." `
         -ForegroundColor Yellow
 
-    powercfg /setactive SCHEME_MAX
+    if ($PSCmdlet.ShouldProcess(
+            "Power scheme",
+            "Activate High Performance"
+        )) {
 
-    if ($LASTEXITCODE -eq 0) {
+        powercfg /setactive SCHEME_MAX
 
-        Write-Host ""
-        Write-Host `
-            "Höchstleistung aktiviert." `
-            -ForegroundColor Green
+        if ($LASTEXITCODE -eq 0) {
 
-        Write-Log `
-            "Höchstleistungsprofil aktiviert." `
-            "SUCCESS"
-    }
-    else {
+            Write-Host ""
 
-        Write-Host ""
-        Write-Host `
-            "Energieprofil konnte nicht aktiviert werden." `
-            -ForegroundColor Red
+            Write-Host `
+                "Höchstleistung aktiviert." `
+                -ForegroundColor Green
 
-        Write-Log `
-            "Höchstleistungsprofil konnte nicht aktiviert werden." `
-            "ERROR"
+            Write-AppLog `
+                "Höchstleistungsprofil aktiviert." `
+                "SUCCESS"
+        }
+        else {
+
+            Write-Host ""
+
+            Write-Host `
+                "Energieprofil konnte nicht aktiviert werden." `
+                -ForegroundColor Red
+
+            Write-AppLog `
+                "Höchstleistungsprofil konnte nicht aktiviert werden." `
+                "ERROR"
+        }
     }
 
     Write-Host ""
     Read-Host "Enter drücken"
 }
 
-# ------------------------------------------------------------
+# ============================================================
 # 7. Game DVR
-# ------------------------------------------------------------
+# ============================================================
 
 function Disable-GameDVR {
 
     Clear-Host
 
-    Write-Host "========================================" `
+    Write-Host `
+        "========================================" `
         -ForegroundColor Cyan
-    Write-Host " Hintergrundaufnahme" `
+
+    Write-Host `
+        " Hintergrundaufnahme" `
         -ForegroundColor Cyan
-    Write-Host "========================================" `
+
+    Write-Host `
+        "========================================" `
         -ForegroundColor Cyan
+
     Write-Host ""
 
-    Write-Log "Game DVR Deaktivierung gestartet."
+    Write-AppLog `
+        "Game DVR Deaktivierung gestartet."
 
     Write-Host `
         "Deaktiviere Hintergrundaufnahme..." `
@@ -618,11 +703,12 @@ function Disable-GameDVR {
         -ErrorAction SilentlyContinue
 
     Write-Host ""
+
     Write-Host `
         "Hintergrundaufnahme deaktiviert." `
         -ForegroundColor Green
 
-    Write-Log `
+    Write-AppLog `
         "Game DVR erfolgreich deaktiviert." `
         "SUCCESS"
 
@@ -630,23 +716,30 @@ function Disable-GameDVR {
     Read-Host "Enter drücken"
 }
 
-# ------------------------------------------------------------
+# ============================================================
 # 8. Speicheroptimierung
-# ------------------------------------------------------------
+# ============================================================
 
 function Enable-StorageOptimization {
 
     Clear-Host
 
-    Write-Host "========================================" `
+    Write-Host `
+        "========================================" `
         -ForegroundColor Cyan
-    Write-Host " Speicheroptimierung" `
+
+    Write-Host `
+        " Speicheroptimierung" `
         -ForegroundColor Cyan
-    Write-Host "========================================" `
+
+    Write-Host `
+        "========================================" `
         -ForegroundColor Cyan
+
     Write-Host ""
 
-    Write-Log "Speicheroptimierung wird aktiviert."
+    Write-AppLog `
+        "Speicheroptimierung wird aktiviert."
 
     Write-Host `
         "Speicheroptimierung wird aktiviert..." `
@@ -658,22 +751,24 @@ function Enable-StorageOptimization {
             -ErrorAction Stop
 
         Write-Host ""
+
         Write-Host `
             "Speicheroptimierung aktiviert." `
             -ForegroundColor Green
 
-        Write-Log `
+        Write-AppLog `
             "Speicheroptimierung erfolgreich aktiviert." `
             "SUCCESS"
     }
     catch {
 
         Write-Host ""
+
         Write-Host `
             "Speicheroptimierung konnte nicht aktiviert werden." `
             -ForegroundColor DarkYellow
 
-        Write-Log `
+        Write-AppLog `
             "Speicheroptimierung fehlgeschlagen: $($_.Exception.Message)" `
             "WARNING"
     }
@@ -690,12 +785,18 @@ do {
 
     Clear-Host
 
-    Write-Host "========================================" `
+    Write-Host `
+        "========================================" `
         -ForegroundColor Cyan
-    Write-Host " Windows Maintenance Toolkit v1.1" `
+
+    Write-Host `
+        " Windows Maintenance Toolkit v1.1" `
         -ForegroundColor Cyan
-    Write-Host "========================================" `
+
+    Write-Host `
+        "========================================" `
         -ForegroundColor Cyan
+
     Write-Host ""
 
     Write-Host "[1] Systeminformationen"
@@ -712,7 +813,8 @@ do {
 
     $choice = Read-Host "Auswahl"
 
-    Write-Log "Menüauswahl: $choice"
+    Write-AppLog `
+        "Menüauswahl: $choice"
 
     switch ($choice) {
 
@@ -750,27 +852,30 @@ do {
 
         "0" {
 
-            Write-Log `
+            Write-AppLog `
                 "Windows Maintenance Toolkit beendet." `
                 "SUCCESS"
 
             Clear-Host
 
             Write-Host ""
+
             Write-Host `
                 "Windows Maintenance Toolkit beendet." `
                 -ForegroundColor Cyan
+
             Write-Host ""
         }
 
         default {
 
             Write-Host ""
+
             Write-Host `
                 "Ungültige Auswahl." `
                 -ForegroundColor Red
 
-            Write-Log `
+            Write-AppLog `
                 "Ungültige Menüauswahl: $choice" `
                 "WARNING"
 
