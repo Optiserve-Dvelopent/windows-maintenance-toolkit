@@ -1,169 +1,112 @@
 # Windows Maintenance Toolkit
 
-[![PowerShell CI](https://github.com/Optiserve-Dvelopent/windows-maintenance-toolkit/actions/workflows/powershell.yml/badge.svg)](https://github.com/Optiserve-Dvelopent/windows-maintenance-toolkit/actions/workflows/powershell.yml)
-[![Latest Release](https://img.shields.io/github/v/release/Optiserve-Dvelopent/windows-maintenance-toolkit?display_name=tag)](https://github.com/Optiserve-Dvelopent/windows-maintenance-toolkit/releases)
+A lightweight PowerShell utility for routine Windows maintenance and cleanup. This project provides a menu-driven script that helps clean temporary files, clear cached data, repair system files, and apply a few common maintenance actions without relying on third-party optimizer software.
 
+## What this project does
 
-A PowerShell toolkit for optimizing, cleaning, and maintaining Windows 11 systems.
+The script in `optimize.ps1` offers a simple interactive menu with these options:
 
-The **Windows Maintenance Toolkit** provides a collection of practical system maintenance and performance optimization tasks without relying on third-party "PC booster" software.
-
-## Features
-
-- Clean temporary files
+- System information
+- Clean temporary files and recycle bin
 - Clear DNS cache
-- Clean Windows component store
-- Check and repair Windows system files
-- Configure Windows power settings
-- Disable unnecessary background game recording
-- Enable Windows Storage Sense
-- Display system information
-- Display configured startup applications
-- Run common maintenance tasks from a single PowerShell script
+- Clean the Windows component store with DISM
+- Run SFC to check system files
+- Switch to the High Performance power plan
+- Disable Game DVR background capture
+- Enable Storage Sense
+- Exit the tool
+
+Each action is logged to `logs/maintenance.log`.
 
 ## Requirements
 
-- Windows 11
+- Windows 10 or Windows 11
 - PowerShell 5.1 or newer
 - Administrator privileges
 
-## Installation
+## Project structure
 
-Clone the repository:
-
-```powershell
-git clone https://github.com/Optiserve-Dvelopent/windows-maintenance-toolkit.git
-```
-
-Enter the repository:
-
-```powershell
-cd windows-maintenance-toolkit
+```text
+winop/
+├── optimize.ps1
+├── README.md
+├── LICENSE
+├── logs/
+│   └── maintenance.log
+└── .gitignore
 ```
 
 ## Usage
 
-Open **PowerShell as Administrator**.
-
-Temporarily allow script execution for the current PowerShell session:
+Open PowerShell as Administrator and run:
 
 ```powershell
 Set-ExecutionPolicy -Scope Process Bypass
-```
-
-Run the toolkit:
-
-```powershell
 .\optimize.ps1
 ```
 
-Alternatively:
+You can also run it directly without changing your session policy:
 
 ```powershell
 powershell.exe -ExecutionPolicy Bypass -File ".\optimize.ps1"
 ```
 
-## What It Does
+## Included maintenance tasks
 
-### Temporary File Cleanup
+### Temporary cleanup
 
-Removes unnecessary files from common Windows temporary directories.
+Removes files from common temp folders and empties the Recycle Bin.
 
-### DNS Cache Cleanup
+### DNS cache reset
 
-Clears the Windows DNS client cache:
+Uses:
 
 ```powershell
 Clear-DnsClientCache
 ```
 
-### Windows Component Cleanup
+### Component store cleanup
 
-Uses Microsoft's DISM tool to clean up obsolete Windows components:
+Runs:
 
 ```powershell
 DISM.exe /Online /Cleanup-Image /StartComponentCleanup
 ```
 
-### System File Check
+### System file validation
 
-Runs Windows System File Checker:
+Runs:
 
 ```powershell
 sfc.exe /scannow
 ```
 
-SFC checks Windows system files for corruption and attempts to repair detected problems.
+### Power plan
 
-### Power Plan
+Attempts to enable the High Performance power scheme using:
 
-The toolkit attempts to activate the Windows **High Performance** power plan when available.
+```powershell
+powercfg /setactive SCHEME_MAX
+```
 
 ### Game DVR
 
-Disables Windows background game recording to reduce unnecessary background activity.
+Disables Game DVR capture settings in the current user profile.
 
 ### Storage Sense
 
-Enables Windows Storage Sense where supported.
+Enables Windows Storage Sense if supported by the system.
 
-### Startup Applications
+## Safety notes
 
-Displays applications configured to start automatically with Windows, allowing unnecessary startup programs to be identified.
-
-## Safety
-
-The toolkit is designed to avoid aggressive system modifications.
-
-It does **not**:
-
-- Disable essential Windows services
-- Delete personal files
-- Disable Windows Defender
-- Disable Windows Update
-- Install third-party software
-- Apply undocumented collections of registry tweaks
-
-System configuration changes can still have unintended effects. Review the script before running it on important systems.
-
-## Project Structure
-
-```text
-windows-maintenance-toolkit/
-├── optimize.ps1
-├── README.md
-├── LICENSE
-└── .gitignore
-```
-
-## Contributing
-
-Contributions, improvements, bug reports, and feature requests are welcome.
-
-When contributing:
-
-1. Keep the toolkit compatible with Windows 11.
-2. Avoid unnecessary registry modifications.
-3. Do not disable essential Windows security features.
-4. Document significant system changes.
-5. Test changes before submitting a pull request.
-
-## Disclaimer
-
-This project is provided **as-is**, without warranty.
-
-The authors are not responsible for data loss, system instability, hardware damage, or other issues resulting from the use or modification of this software.
-
-Review the source code and understand what it does before executing it.
+This tool is intentionally conservative and does not install third-party software or disable vital Windows protections. However, changing power settings, clearing caches, and cleaning system components can still affect system behavior. Review the script before running it on important or production systems.
 
 ## License
 
-This project is licensed under the **MIT License**.
+This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
 
-See the [`LICENSE`](LICENSE) file for details.
+## Notes
 
-## Author
-
-**Optiserve Development**
-
-GitHub: [Optiserve-Dvelopent](https://github.com/Optiserve-Dvelopent)
+- The script creates the `logs` directory automatically if it does not exist.
+- Actions are written to a log file for troubleshooting and review.
+- The interface is menu-based and designed for interactive local maintenance tasks.
