@@ -1,2 +1,4 @@
 ./logs/*
 logs/maintenance.log
+optimize.ps1.corrupt-backup
+optimize.ps1.pre-smart-backup

@@ -1,4 +1,4 @@
-﻿[Diagnostics.CodeAnalysis.SuppressMessageAttribute(
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute(
     'PSAvoidUsingWriteHost',
     '',
     Justification = 'Interactive console script uses Write-Host for colored status output.'
@@ -207,6 +207,24 @@ function Show-SystemInfo {
 # 2. Clean Up
 # ============================================================
 
+function Format-DataSize {
+
+    param(
+        [Parameter(Mandatory = $true)]
+        [double]$Bytes
+    )
+
+    $units = @("B", "KB", "MB", "GB", "TB")
+    $unitIndex = 0
+
+    while ($Bytes -ge 1024 -and $unitIndex -lt ($units.Count - 1)) {
+
+        $Bytes = $Bytes / 1024
+        $unitIndex++
+    }
+
+    return ("{0:N2} {1}" -f $Bytes, $units[$unitIndex])
+}
 function Invoke-Cleanup {
 
     Clear-Host
@@ -232,6 +250,10 @@ function Invoke-Cleanup {
         "$env:WINDIR\Temp"
     )
 
+    $cleanupTargets = @()
+    $fileCount = [long]0
+    $estimatedBytes = [double]0
+
     foreach ($path in $tempPaths) {
 
         if (-not (Test-Path $path)) {
@@ -242,6 +264,51 @@ function Invoke-Cleanup {
 
             continue
         }
+
+        $cleanupTargets += $path
+
+        Get-ChildItem `
+            -Path $path `
+            -File `
+            -Recurse `
+            -Force `
+            -ErrorAction SilentlyContinue | ForEach-Object {
+
+            $fileCount++
+            $estimatedBytes += $_.Length
+        }
+    }
+
+    Write-Host `
+        "Vorschau temporärer Dateien" `
+        -ForegroundColor Cyan
+
+    Write-Host `
+        "Gefunden: $fileCount Dateien" `
+        -ForegroundColor Yellow
+
+    Write-Host `
+        "Geschätzter Speichergewinn: $(Format-DataSize $estimatedBytes)" `
+        -ForegroundColor Yellow
+
+    Write-AppLog `
+        "Cleanup-Vorschau: $fileCount Dateien, geschätzter Speichergewinn $(Format-DataSize $estimatedBytes)."
+
+    Write-Host ""
+    $confirmation = Read-Host "Temporäre Dateien jetzt löschen? (J/N)"
+
+    if ($confirmation -notmatch '^(j|ja|y|yes)$') {
+
+        Write-Host "Cleanup abgebrochen. Es wurden keine Änderungen vorgenommen." -ForegroundColor DarkYellow
+        Write-AppLog "Cleanup nach Vorschau abgebrochen." "WARNING"
+        Write-Host ""
+        Read-Host "Enter drücken"
+        return
+    }
+
+    Write-AppLog "Cleanup nach Vorschau bestätigt."
+
+    foreach ($path in $cleanupTargets) {
 
         Write-Host `
             "Bereinige: $path" `
@@ -777,6 +844,81 @@ function Enable-StorageOptimization {
     Read-Host "Enter drücken"
 }
 
+function Show-DriveHealth {
+
+    Clear-Host
+
+    Write-Host `
+        "========================================" `
+        -ForegroundColor Cyan
+
+    Write-Host `
+        " SMART-/Laufwerksgesundheit" `
+        -ForegroundColor Cyan
+
+    Write-Host `
+        "========================================" `
+        -ForegroundColor Cyan
+
+    Write-Host ""
+    Write-AppLog "Laufwerksgesundheit wird abgefragt."
+
+    try {
+
+        $physicalDisks = Get-PhysicalDisk -ErrorAction Stop
+
+        foreach ($disk in $physicalDisks) {
+
+            Write-Host "Laufwerk: $($disk.FriendlyName)" -ForegroundColor Yellow
+            Write-Host "  Gesundheit: $($disk.HealthStatus)"
+            Write-Host "  Betriebsstatus: $($disk.OperationalStatus -join ', ')"
+            Write-Host "  Medium: $($disk.MediaType)"
+            Write-Host "  Größe: $(Format-DataSize ([double]$disk.Size))"
+            Write-Host ""
+        }
+    }
+    catch {
+
+        Write-Host "Physische Laufwerke konnten nicht ermittelt werden." -ForegroundColor DarkYellow
+        Write-AppLog "Laufwerksgesundheit nicht verfügbar: $($_.Exception.Message)" "WARNING"
+    }
+
+    try {
+
+        $smartStates = Get-CimInstance `
+            -Namespace "root\wmi" `
+            -ClassName "MSStorageDriver_FailurePredictStatus" `
+            -ErrorAction Stop
+
+        if ($smartStates) {
+
+            Write-Host "SMART-Status" -ForegroundColor Cyan
+
+            foreach ($smartState in $smartStates) {
+
+                $status = if ($smartState.PredictFailure) { "Warnung" } else { "OK" }
+                $color = if ($smartState.PredictFailure) { "Red" } else { "Green" }
+
+                Write-Host `
+                    "  $($smartState.InstanceName): $status" `
+                    -ForegroundColor $color
+            }
+        }
+        else {
+
+            Write-Host "Keine SMART-Daten verfügbar." -ForegroundColor DarkYellow
+        }
+    }
+    catch {
+
+        Write-Host "SMART-Daten werden von diesem System oder Laufwerk nicht bereitgestellt." -ForegroundColor DarkYellow
+        Write-AppLog "SMART-Daten nicht verfügbar: $($_.Exception.Message)" "WARNING"
+    }
+
+    Write-AppLog "Laufwerksgesundheit abgefragt." "SUCCESS"
+    Write-Host ""
+    Read-Host "Enter drücken"
+}
 # ============================================================
 # Hauptmenü
 # ============================================================
@@ -807,6 +949,7 @@ do {
     Write-Host "[6] Energieprofil"
     Write-Host "[7] Game DVR deaktivieren"
     Write-Host "[8] Speicheroptimierung"
+    Write-Host "[9] SMART-/Laufwerksgesundheit"
     Write-Host "[0] Beenden"
 
     Write-Host ""
@@ -850,6 +993,10 @@ do {
             Enable-StorageOptimization
         }
 
+        "9" {
+            Show-DriveHealth
+        }
+
         "0" {
 
             Write-AppLog `
@@ -885,5 +1032,3 @@ do {
 
 } while ($choice -ne "0")
 # Ende des Hauptmenüs
-# development notes
-# - Version 1.1

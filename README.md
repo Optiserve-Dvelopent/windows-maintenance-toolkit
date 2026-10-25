@@ -59,8 +59,16 @@ powershell.exe -ExecutionPolicy Bypass -File ".\optimize.ps1"
 
 ### Temporary cleanup
 
-Removes files from common temp folders and empties the Recycle Bin.
+Before removing files from common temp folders, shows the number of temporary
+files found and the estimated space that will be recovered. Cleanup proceeds
+only after confirmation; declining leaves the temp files, Recycle Bin, and DNS
+cache unchanged.
 
+### SMART drive health
+
+Shows each detected physical drive's Windows health and operational status, plus
+SMART failure-prediction state when the device and its driver make that data
+available. This check is read-only.
 ### DNS cache reset
 
 Uses:
