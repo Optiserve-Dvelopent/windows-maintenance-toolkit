@@ -844,6 +844,142 @@ function Enable-StorageOptimization {
     Read-Host "Enter drücken"
 }
 
+function New-SystemRestorePoint {
+
+    Clear-Host
+    Write-Host "Erstelle Systemwiederherstellungspunkt..." -ForegroundColor Yellow
+
+    try {
+
+        Checkpoint-Computer `
+            -Description "Windows Maintenance Toolkit" `
+            -RestorePointType "MODIFY_SETTINGS" `
+            -ErrorAction Stop
+
+        Write-Host "Wiederherstellungspunkt wurde erstellt." -ForegroundColor Green
+        Write-AppLog "Systemwiederherstellungspunkt erstellt." "SUCCESS"
+    }
+    catch {
+
+        Write-Host "Wiederherstellungspunkt konnte nicht erstellt werden." -ForegroundColor DarkYellow
+        Write-AppLog "Wiederherstellungspunkt fehlgeschlagen: $($_.Exception.Message)" "WARNING"
+    }
+
+    Write-Host ""
+    Read-Host "Enter drücken"
+}
+
+function Restore-BalancedPowerPlan {
+
+    Clear-Host
+    Write-Host "Aktiviere das ausgewogene Energieprofil..." -ForegroundColor Yellow
+
+    powercfg /setactive SCHEME_BALANCED
+
+    if ($LASTEXITCODE -eq 0) {
+
+        Write-Host "Ausgewogenes Energieprofil aktiviert." -ForegroundColor Green
+        Write-AppLog "Ausgewogenes Energieprofil wiederhergestellt." "SUCCESS"
+    }
+    else {
+
+        Write-Host "Energieprofil konnte nicht wiederhergestellt werden." -ForegroundColor Red
+        Write-AppLog "Wiederherstellung des Energieprofils fehlgeschlagen. Exit Code: $LASTEXITCODE" "ERROR"
+    }
+
+    Write-Host ""
+    Read-Host "Enter drücken"
+}
+
+function Enable-GameDVR {
+
+    Clear-Host
+    Write-Host "Aktiviere Hintergrundaufnahme..." -ForegroundColor Yellow
+
+    try {
+
+        $gameConfig = "HKCU:\System\GameConfigStore"
+        $gameDvr = "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\GameDVR"
+
+        if (-not (Test-Path $gameConfig)) {
+            New-Item -Path $gameConfig -Force -ErrorAction Stop | Out-Null
+        }
+
+        if (-not (Test-Path $gameDvr)) {
+            New-Item -Path $gameDvr -Force -ErrorAction Stop | Out-Null
+        }
+
+        Set-ItemProperty -Path $gameConfig -Name "GameDVR_Enabled" -Type DWord -Value 1 -ErrorAction Stop
+        Set-ItemProperty -Path $gameDvr -Name "AppCaptureEnabled" -Type DWord -Value 1 -ErrorAction Stop
+
+        Write-Host "Hintergrundaufnahme aktiviert." -ForegroundColor Green
+        Write-AppLog "Game DVR wieder aktiviert." "SUCCESS"
+    }
+    catch {
+
+        Write-Host "Hintergrundaufnahme konnte nicht aktiviert werden." -ForegroundColor Red
+        Write-AppLog "Wiederherstellung von Game DVR fehlgeschlagen: $($_.Exception.Message)" "ERROR"
+    }
+
+    Write-Host ""
+    Read-Host "Enter drücken"
+}
+
+function Disable-StorageOptimization {
+
+    Clear-Host
+    Write-Host "Deaktiviere Speicheroptimierung..." -ForegroundColor Yellow
+
+    try {
+
+        Disable-StorageSense -ErrorAction Stop
+
+        Write-Host "Speicheroptimierung deaktiviert." -ForegroundColor Green
+        Write-AppLog "Speicheroptimierung deaktiviert." "SUCCESS"
+    }
+    catch {
+
+        Write-Host "Speicheroptimierung konnte nicht deaktiviert werden." -ForegroundColor DarkYellow
+        Write-AppLog "Deaktivierung der Speicheroptimierung fehlgeschlagen: $($_.Exception.Message)" "WARNING"
+    }
+
+    Write-Host ""
+    Read-Host "Enter drücken"
+}
+
+function Show-RecoveryMenu {
+
+    do {
+
+        Clear-Host
+
+        Write-Host "========================================" -ForegroundColor Cyan
+        Write-Host " Wiederherstellung" -ForegroundColor Cyan
+        Write-Host "========================================" -ForegroundColor Cyan
+        Write-Host ""
+        Write-Host "[1] Wiederherstellungspunkt erstellen"
+        Write-Host "[2] Ausgewogenes Energieprofil wiederherstellen"
+        Write-Host "[3] Game DVR wieder aktivieren"
+        Write-Host "[4] Speicheroptimierung deaktivieren"
+        Write-Host "[0] Zurück"
+        Write-Host ""
+
+        $recoveryChoice = Read-Host "Auswahl"
+
+        switch ($recoveryChoice) {
+
+            "1" { New-SystemRestorePoint }
+            "2" { Restore-BalancedPowerPlan }
+            "3" { Enable-GameDVR }
+            "4" { Disable-StorageOptimization }
+            "0" { }
+            default {
+                Write-Host "Ungültige Auswahl." -ForegroundColor Red
+                Start-Sleep -Seconds 1
+            }
+        }
+    } while ($recoveryChoice -ne "0")
+}
 function Show-DriveHealth {
 
     Clear-Host
@@ -950,6 +1086,7 @@ do {
     Write-Host "[7] Game DVR deaktivieren"
     Write-Host "[8] Speicheroptimierung"
     Write-Host "[9] SMART-/Laufwerksgesundheit"
+    Write-Host "[10] Wiederherstellung"
     Write-Host "[0] Beenden"
 
     Write-Host ""
@@ -995,6 +1132,10 @@ do {
 
         "9" {
             Show-DriveHealth
+        }
+
+        "10" {
+            Show-RecoveryMenu
         }
 
         "0" {

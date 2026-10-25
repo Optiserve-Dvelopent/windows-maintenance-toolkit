@@ -1,0 +1,47 @@
+
+name: Release Newsletter
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  newsletter:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install markdown-it-py==3.0.0
+
+      - name: Send MailerLite newsletter
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MAILERLITE_API_KEY: ${{ secrets.MAILERLITE_API_KEY }}
+          MAILERLITE_GROUP_ID: ${{ vars.MAILERLITE_GROUP_ID }}
+          MAILERLITE_FROM_EMAIL: ${{ secrets.MAILERLITE_FROM_EMAIL }}
+          MAILERLITE_FROM_NAME: ${{ vars.MAILERLITE_FROM_NAME }}
+          MAILERLITE_ACCOUNT_NAME: ${{ vars.MAILERLITE_ACCOUNT_NAME }}
+          MAILERLITE_ACCOUNT_ADDRESS: ${{ vars.MAILERLITE_ACCOUNT_ADDRESS }}
+          MAILERLITE_ACCOUNT_COUNTRY: ${{ vars.MAILERLITE_ACCOUNT_COUNTRY }}
+          PROJECT_NAME: ${{ vars.NEWSLETTER_PROJECT_NAME }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          RELEASE_NAME: ${{ github.event.release.name }}
+          RELEASE_BODY: ${{ github.event.release.body }}
+          RELEASE_URL: ${{ github.event.release.html_url }}
+          RELEASE_PRERELEASE: ${{ github.event.release.prerelease }}
+          REPOSITORY: ${{ github.repository }}
+          WORKFLOW_EVENT: release
+          SEND_PRERELEASES: "false"
+          MAILERLITE_SEND_LIVE: "true"
+        run: python scripts/send_release_newsletter.py

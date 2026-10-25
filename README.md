@@ -64,6 +64,10 @@ files found and the estimated space that will be recovered. Cleanup proceeds
 only after confirmation; declining leaves the temp files, Recycle Bin, and DNS
 cache unchanged.
 
+### Recovery options
+
+The recovery menu can create a Windows restore point, return to the Balanced
+power plan, re-enable Game DVR, or disable Storage Sense.
 ### SMART drive health
 
 Shows each detected physical drive's Windows health and operational status, plus
