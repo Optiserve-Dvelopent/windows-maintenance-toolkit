@@ -64,6 +64,11 @@ files found and the estimated space that will be recovered. Cleanup proceeds
 only after confirmation; declining leaves the temp files, Recycle Bin, and DNS
 cache unchanged.
 
+### Graphical interface
+
+Menu option 11 opens a native Windows interface for common maintenance,
+cleanup, drive-health, and recovery actions. Clean Up keeps its preview and
+explicit confirmation in the GUI.
 ### Recovery options
 
 The recovery menu can create a Windows restore point, return to the Balanced

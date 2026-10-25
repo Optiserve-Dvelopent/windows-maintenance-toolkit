@@ -1,0 +1,1430 @@
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute(
+    'PSAvoidUsingWriteHost',
+    '',
+    Justification = 'Interactive console script uses Write-Host for colored status output.'
+)]
+param()
+
+# ============================================================
+# Windows Maintenance Toolkit v1.1
+# ============================================================
+
+# ============================================================
+# Logging
+# ============================================================
+
+$scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
+$logDirectory = Join-Path $scriptRoot "logs"
+$logFile = Join-Path $logDirectory "maintenance.log"
+
+if (-not (Test-Path $logDirectory)) {
+    New-Item `
+        -Path $logDirectory `
+        -ItemType Directory `
+        -Force |
+    Out-Null
+}
+
+function Write-AppLog {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Message,
+
+        [ValidateSet("INFO", "SUCCESS", "WARNING", "ERROR")]
+        [string]$Level = "INFO"
+    )
+
+    $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+    $entry = "[$timestamp] [$Level] $Message"
+
+    try {
+        Add-Content `
+            -Path $logFile `
+            -Value $entry `
+            -ErrorAction Stop
+    }
+    catch {
+        Write-Verbose "Logging fehlgeschlagen: $($_.Exception.Message)"
+    }
+}
+
+# ============================================================
+# Administratorprüfung
+# ============================================================
+
+$isAdmin = ([Security.Principal.WindowsPrincipal] `
+        [Security.Principal.WindowsIdentity]::GetCurrent()
+).IsInRole(
+    [Security.Principal.WindowsBuiltInRole]::Administrator
+)
+
+if (-not $isAdmin) {
+
+    Write-Host ""
+    Write-Host `
+        "Bitte PowerShell als Administrator starten." `
+        -ForegroundColor Red
+    Write-Host ""
+
+    exit 1
+}
+
+Write-AppLog `
+    "Windows Maintenance Toolkit gestartet." `
+    "INFO"
+
+# ============================================================
+# Header
+# ============================================================
+
+Clear-Host
+
+Write-Host ""
+Write-Host `
+    "========================================" `
+    -ForegroundColor Cyan
+
+Write-Host `
+    " Windows Maintenance Toolkit v1.1" `
+    -ForegroundColor Cyan
+
+Write-Host `
+    "========================================" `
+    -ForegroundColor Cyan
+
+Write-Host ""
+
+# ============================================================
+# 1. Systeminformationen
+# ============================================================
+
+function Show-SystemInfo {
+
+    Clear-Host
+
+    Write-Host `
+        "========================================" `
+        -ForegroundColor Cyan
+
+    Write-Host `
+        " Systeminformationen" `
+        -ForegroundColor Cyan
+
+    Write-Host `
+        "========================================" `
+        -ForegroundColor Cyan
+
+    Write-Host ""
+
+    Write-AppLog `
+        "Systeminformationen werden abgerufen."
+
+    try {
+
+        $os = Get-CimInstance Win32_OperatingSystem
+
+        $cpu = Get-CimInstance Win32_Processor |
+        Select-Object -First 1
+
+        $ram = [math]::Round(
+            $os.TotalVisibleMemorySize / 1MB,
+            1
+        )
+
+        $disk = Get-CimInstance Win32_LogicalDisk `
+            -Filter "DeviceID='C:'"
+
+        Write-Host "Windows: $($os.Caption)"
+        Write-Host "CPU:     $($cpu.Name)"
+        Write-Host "RAM:     $ram GB"
+
+        Write-AppLog `
+            "Windows: $($os.Caption)"
+
+        Write-AppLog `
+            "CPU: $($cpu.Name)"
+
+        Write-AppLog `
+            "RAM: $ram GB"
+
+        if ($disk) {
+
+            $freeSpace = [math]::Round(
+                $disk.FreeSpace / 1GB,
+                1
+            )
+
+            $totalSpace = [math]::Round(
+                $disk.Size / 1GB,
+                1
+            )
+
+            Write-Host `
+                "Storage: $freeSpace GB frei / $totalSpace GB"
+
+            Write-AppLog `
+                "Storage: $freeSpace GB frei / $totalSpace GB"
+        }
+        else {
+
+            Write-Host `
+                "Storage: C: konnte nicht ermittelt werden." `
+                -ForegroundColor DarkYellow
+
+            Write-AppLog `
+                "C: Speicher konnte nicht ermittelt werden." `
+                "WARNING"
+        }
+
+        Write-Host ""
+
+        Write-Host `
+            "Systeminformationen erfolgreich abgerufen." `
+            -ForegroundColor Green
+
+        Write-AppLog `
+            "Systeminformationen erfolgreich abgerufen." `
+            "SUCCESS"
+    }
+    catch {
+
+        Write-Host ""
+
+        Write-Host `
+            "Fehler beim Abrufen der Systeminformationen." `
+            -ForegroundColor Red
+
+        Write-AppLog `
+            "Fehler bei Systeminformationen: $($_.Exception.Message)" `
+            "ERROR"
+    }
+
+    Write-Host ""
+    Read-Host "Enter drücken"
+}
+
+# ============================================================
+# 2. Clean Up
+# ============================================================
+
+function Format-DataSize {
+
+    param(
+        [Parameter(Mandatory = $true)]
+        [double]$Bytes
+    )
+
+    $units = @("B", "KB", "MB", "GB", "TB")
+    $unitIndex = 0
+
+    while ($Bytes -ge 1024 -and $unitIndex -lt ($units.Count - 1)) {
+
+        $Bytes = $Bytes / 1024
+        $unitIndex++
+    }
+
+    return ("{0:N2} {1}" -f $Bytes, $units[$unitIndex])
+}
+function Invoke-Cleanup {
+
+    Clear-Host
+
+    Write-Host `
+        "========================================" `
+        -ForegroundColor Cyan
+
+    Write-Host `
+        " Clean Up" `
+        -ForegroundColor Cyan
+
+    Write-Host `
+        "========================================" `
+        -ForegroundColor Cyan
+
+    Write-Host ""
+
+    Write-AppLog "Cleanup gestartet."
+
+    $tempPaths = @(
+        $env:TEMP,
+        "$env:WINDIR\Temp"
+    )
+
+    $cleanupTargets = @()
+    $fileCount = [long]0
+    $estimatedBytes = [double]0
+
+    foreach ($path in $tempPaths) {
+
+        if (-not (Test-Path $path)) {
+
+            Write-AppLog `
+                "Temp-Pfad nicht gefunden: $path" `
+                "WARNING"
+
+            continue
+        }
+
+        $cleanupTargets += $path
+
+        Get-ChildItem `
+            -Path $path `
+            -File `
+            -Recurse `
+            -Force `
+            -ErrorAction SilentlyContinue | ForEach-Object {
+
+            $fileCount++
+            $estimatedBytes += $_.Length
+        }
+    }
+
+    Write-Host `
+        "Vorschau temporärer Dateien" `
+        -ForegroundColor Cyan
+
+    Write-Host `
+        "Gefunden: $fileCount Dateien" `
+        -ForegroundColor Yellow
+
+    Write-Host `
+        "Geschätzter Speichergewinn: $(Format-DataSize $estimatedBytes)" `
+        -ForegroundColor Yellow
+
+    Write-AppLog `
+        "Cleanup-Vorschau: $fileCount Dateien, geschätzter Speichergewinn $(Format-DataSize $estimatedBytes)."
+
+    Write-Host ""
+    $confirmation = Read-Host "Temporäre Dateien jetzt löschen? (J/N)"
+
+    if ($confirmation -notmatch '^(j|ja|y|yes)$') {
+
+        Write-Host "Cleanup abgebrochen. Es wurden keine Änderungen vorgenommen." -ForegroundColor DarkYellow
+        Write-AppLog "Cleanup nach Vorschau abgebrochen." "WARNING"
+        Write-Host ""
+        Read-Host "Enter drücken"
+        return
+    }
+
+    Write-AppLog "Cleanup nach Vorschau bestätigt."
+
+    foreach ($path in $cleanupTargets) {
+
+        Write-Host `
+            "Bereinige: $path" `
+            -ForegroundColor Yellow
+
+        Write-AppLog `
+            "Bereinige: $path"
+
+        $items = Get-ChildItem `
+            -Path $path `
+            -Force `
+            -ErrorAction SilentlyContinue
+
+        $removed = 0
+        $failed = 0
+
+        foreach ($item in $items) {
+
+            try {
+
+                Remove-Item `
+                    -Path $item.FullName `
+                    -Recurse `
+                    -Force `
+                    -ErrorAction Stop
+
+                $removed++
+            }
+            catch {
+
+                $failed++
+
+                Write-AppLog `
+                    "Datei konnte nicht entfernt werden: $($item.FullName)" `
+                    "WARNING"
+            }
+        }
+
+        Write-Host `
+            "Entfernt: $removed" `
+            -ForegroundColor Green
+
+        Write-AppLog `
+            "Entfernt aus $path : $removed Dateien."
+
+        if ($failed -gt 0) {
+
+            Write-Host `
+                "Übersprungen: $failed" `
+                -ForegroundColor DarkYellow
+
+            Write-AppLog `
+                "Übersprungen: $failed Dateien." `
+                "WARNING"
+        }
+
+        Write-Host ""
+    }
+
+    # --------------------------------------------------------
+    # Papierkorb
+    # --------------------------------------------------------
+
+    Write-Host `
+        "Leere Papierkorb..." `
+        -ForegroundColor Yellow
+
+    Write-AppLog `
+        "Papierkorb wird geleert."
+
+    try {
+
+        Clear-RecycleBin `
+            -Force `
+            -ErrorAction Stop
+
+        Write-Host `
+            "Papierkorb geleert." `
+            -ForegroundColor Green
+
+        Write-AppLog `
+            "Papierkorb erfolgreich geleert." `
+            "SUCCESS"
+    }
+    catch {
+
+        Write-Host `
+            "Papierkorb konnte nicht geleert werden." `
+            -ForegroundColor DarkYellow
+
+        Write-AppLog `
+            "Papierkorb konnte nicht geleert werden." `
+            "WARNING"
+    }
+
+    # --------------------------------------------------------
+    # DNS Cache
+    # --------------------------------------------------------
+
+    Write-Host ""
+
+    Write-Host `
+        "Leere DNS-Cache..." `
+        -ForegroundColor Yellow
+
+    Write-AppLog `
+        "DNS-Cache wird geleert."
+
+    try {
+
+        Clear-DnsClientCache `
+            -ErrorAction Stop
+
+        Write-Host `
+            "DNS-Cache geleert." `
+            -ForegroundColor Green
+
+        Write-AppLog `
+            "DNS-Cache erfolgreich geleert." `
+            "SUCCESS"
+    }
+    catch {
+
+        Write-Host `
+            "DNS-Cache konnte nicht geleert werden." `
+            -ForegroundColor DarkYellow
+
+        Write-AppLog `
+            "DNS-Cache konnte nicht geleert werden." `
+            "WARNING"
+    }
+
+    Write-Host ""
+
+    Write-Host `
+        "Cleanup abgeschlossen." `
+        -ForegroundColor Green
+
+    Write-AppLog `
+        "Cleanup abgeschlossen." `
+        "SUCCESS"
+
+    Write-Host ""
+    Read-Host "Enter drücken"
+}
+
+# ============================================================
+# 3. DNS Cache
+# ============================================================
+
+function Clear-DNSCache {
+
+    Clear-Host
+
+    Write-Host `
+        "========================================" `
+        -ForegroundColor Cyan
+
+    Write-Host `
+        " DNS Cache" `
+        -ForegroundColor Cyan
+
+    Write-Host `
+        "========================================" `
+        -ForegroundColor Cyan
+
+    Write-Host ""
+
+    Write-AppLog `
+        "Manuelle DNS-Cache-Bereinigung gestartet."
+
+    try {
+
+        Clear-DnsClientCache `
+            -ErrorAction Stop
+
+        Write-Host `
+            "DNS-Cache erfolgreich geleert." `
+            -ForegroundColor Green
+
+        Write-AppLog `
+            "DNS-Cache erfolgreich geleert." `
+            "SUCCESS"
+    }
+    catch {
+
+        Write-Host `
+            "DNS-Cache konnte nicht geleert werden." `
+            -ForegroundColor Red
+
+        Write-AppLog `
+            "DNS-Cache konnte nicht geleert werden: $($_.Exception.Message)" `
+            "ERROR"
+    }
+
+    Write-Host ""
+    Read-Host "Enter drücken"
+}
+
+# ============================================================
+# 4. Component Store
+# ============================================================
+
+function Invoke-ComponentCleanup {
+
+    Clear-Host
+
+    Write-Host `
+        "========================================" `
+        -ForegroundColor Cyan
+
+    Write-Host `
+        " Windows Component Store" `
+        -ForegroundColor Cyan
+
+    Write-Host `
+        "========================================" `
+        -ForegroundColor Cyan
+
+    Write-Host ""
+
+    Write-AppLog `
+        "Component Store Bereinigung gestartet."
+
+    Write-Host `
+        "Komponentenbereinigung wird gestartet..." `
+        -ForegroundColor Yellow
+
+    DISM.exe `
+        /Online `
+        /Cleanup-Image `
+        /StartComponentCleanup
+
+    if ($LASTEXITCODE -eq 0) {
+
+        Write-Host ""
+
+        Write-Host `
+            "Komponentenbereinigung abgeschlossen." `
+            -ForegroundColor Green
+
+        Write-AppLog `
+            "Component Store erfolgreich bereinigt." `
+            "SUCCESS"
+    }
+    else {
+
+        Write-Host ""
+
+        Write-Host `
+            "DISM meldete einen Fehler. Exit Code: $LASTEXITCODE" `
+            -ForegroundColor Red
+
+        Write-AppLog `
+            "DISM Fehler. Exit Code: $LASTEXITCODE" `
+            "ERROR"
+    }
+
+    Write-Host ""
+    Read-Host "Enter drücken"
+}
+
+# ============================================================
+# 5. Systemdateien prüfen
+# ============================================================
+
+function Invoke-SystemRepair {
+
+    Clear-Host
+
+    Write-Host `
+        "========================================" `
+        -ForegroundColor Cyan
+
+    Write-Host `
+        " Systemdateien prüfen" `
+        -ForegroundColor Cyan
+
+    Write-Host `
+        "========================================" `
+        -ForegroundColor Cyan
+
+    Write-Host ""
+
+    Write-AppLog `
+        "SFC Systemdateiprüfung gestartet."
+
+    Write-Host `
+        "SFC wird gestartet..." `
+        -ForegroundColor Yellow
+
+    Write-Host ""
+
+    sfc.exe /scannow
+
+    Write-Host ""
+
+    if ($LASTEXITCODE -eq 0) {
+
+        Write-Host `
+            "Systemdateiprüfung abgeschlossen." `
+            -ForegroundColor Green
+
+        Write-AppLog `
+            "SFC erfolgreich abgeschlossen." `
+            "SUCCESS"
+    }
+    else {
+
+        Write-Host `
+            "SFC meldete einen Fehler oder ein Problem." `
+            -ForegroundColor DarkYellow
+
+        Write-AppLog `
+            "SFC Exit Code: $LASTEXITCODE" `
+            "WARNING"
+    }
+
+    Write-Host ""
+    Read-Host "Enter drücken"
+}
+
+# ============================================================
+# 6. Energieprofil
+# ============================================================
+
+function Set-HighPerformance {
+    [CmdletBinding(
+        SupportsShouldProcess = $true,
+        ConfirmImpact = 'Medium'
+    )]
+    param()
+
+    Clear-Host
+
+    Write-Host `
+        "========================================" `
+        -ForegroundColor Cyan
+
+    Write-Host `
+        " Energieprofil" `
+        -ForegroundColor Cyan
+
+    Write-Host `
+        "========================================" `
+        -ForegroundColor Cyan
+
+    Write-Host ""
+
+    Write-AppLog `
+        "Energieprofil Höchstleistung wird aktiviert."
+
+    Write-Host `
+        "Aktiviere Höchstleistung..." `
+        -ForegroundColor Yellow
+
+    if ($PSCmdlet.ShouldProcess(
+            "Power scheme",
+            "Activate High Performance"
+        )) {
+
+        powercfg /setactive SCHEME_MAX
+
+        if ($LASTEXITCODE -eq 0) {
+
+            Write-Host ""
+
+            Write-Host `
+                "Höchstleistung aktiviert." `
+                -ForegroundColor Green
+
+            Write-AppLog `
+                "Höchstleistungsprofil aktiviert." `
+                "SUCCESS"
+        }
+        else {
+
+            Write-Host ""
+
+            Write-Host `
+                "Energieprofil konnte nicht aktiviert werden." `
+                -ForegroundColor Red
+
+            Write-AppLog `
+                "Höchstleistungsprofil konnte nicht aktiviert werden." `
+                "ERROR"
+        }
+    }
+
+    Write-Host ""
+    Read-Host "Enter drücken"
+}
+
+# ============================================================
+# 7. Game DVR
+# ============================================================
+
+function Disable-GameDVR {
+
+    Clear-Host
+
+    Write-Host `
+        "========================================" `
+        -ForegroundColor Cyan
+
+    Write-Host `
+        " Hintergrundaufnahme" `
+        -ForegroundColor Cyan
+
+    Write-Host `
+        "========================================" `
+        -ForegroundColor Cyan
+
+    Write-Host ""
+
+    Write-AppLog `
+        "Game DVR Deaktivierung gestartet."
+
+    Write-Host `
+        "Deaktiviere Hintergrundaufnahme..." `
+        -ForegroundColor Yellow
+
+    $gameConfig = `
+        "HKCU:\System\GameConfigStore"
+
+    if (-not (Test-Path $gameConfig)) {
+
+        New-Item `
+            -Path $gameConfig `
+            -Force `
+            -ErrorAction SilentlyContinue |
+        Out-Null
+    }
+
+    Set-ItemProperty `
+        -Path $gameConfig `
+        -Name "GameDVR_Enabled" `
+        -Type DWord `
+        -Value 0 `
+        -ErrorAction SilentlyContinue
+
+    $gameDvr = `
+        "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\GameDVR"
+
+    if (-not (Test-Path $gameDvr)) {
+
+        New-Item `
+            -Path $gameDvr `
+            -Force `
+            -ErrorAction SilentlyContinue |
+        Out-Null
+    }
+
+    Set-ItemProperty `
+        -Path $gameDvr `
+        -Name "AppCaptureEnabled" `
+        -Type DWord `
+        -Value 0 `
+        -ErrorAction SilentlyContinue
+
+    Write-Host ""
+
+    Write-Host `
+        "Hintergrundaufnahme deaktiviert." `
+        -ForegroundColor Green
+
+    Write-AppLog `
+        "Game DVR erfolgreich deaktiviert." `
+        "SUCCESS"
+
+    Write-Host ""
+    Read-Host "Enter drücken"
+}
+
+# ============================================================
+# 8. Speicheroptimierung
+# ============================================================
+
+function Enable-StorageOptimization {
+
+    Clear-Host
+
+    Write-Host `
+        "========================================" `
+        -ForegroundColor Cyan
+
+    Write-Host `
+        " Speicheroptimierung" `
+        -ForegroundColor Cyan
+
+    Write-Host `
+        "========================================" `
+        -ForegroundColor Cyan
+
+    Write-Host ""
+
+    Write-AppLog `
+        "Speicheroptimierung wird aktiviert."
+
+    Write-Host `
+        "Speicheroptimierung wird aktiviert..." `
+        -ForegroundColor Yellow
+
+    try {
+
+        Enable-StorageSense `
+            -ErrorAction Stop
+
+        Write-Host ""
+
+        Write-Host `
+            "Speicheroptimierung aktiviert." `
+            -ForegroundColor Green
+
+        Write-AppLog `
+            "Speicheroptimierung erfolgreich aktiviert." `
+            "SUCCESS"
+    }
+    catch {
+
+        Write-Host ""
+
+        Write-Host `
+            "Speicheroptimierung konnte nicht aktiviert werden." `
+            -ForegroundColor DarkYellow
+
+        Write-AppLog `
+            "Speicheroptimierung fehlgeschlagen: $($_.Exception.Message)" `
+            "WARNING"
+    }
+
+    Write-Host ""
+    Read-Host "Enter drücken"
+}
+
+function New-SystemRestorePoint {
+
+    Clear-Host
+    Write-Host "Erstelle Systemwiederherstellungspunkt..." -ForegroundColor Yellow
+
+    try {
+
+        Checkpoint-Computer `
+            -Description "Windows Maintenance Toolkit" `
+            -RestorePointType "MODIFY_SETTINGS" `
+            -ErrorAction Stop
+
+        Write-Host "Wiederherstellungspunkt wurde erstellt." -ForegroundColor Green
+        Write-AppLog "Systemwiederherstellungspunkt erstellt." "SUCCESS"
+    }
+    catch {
+
+        Write-Host "Wiederherstellungspunkt konnte nicht erstellt werden." -ForegroundColor DarkYellow
+        Write-AppLog "Wiederherstellungspunkt fehlgeschlagen: $($_.Exception.Message)" "WARNING"
+    }
+
+    Write-Host ""
+    Read-Host "Enter drücken"
+}
+
+function Restore-BalancedPowerPlan {
+
+    Clear-Host
+    Write-Host "Aktiviere das ausgewogene Energieprofil..." -ForegroundColor Yellow
+
+    powercfg /setactive SCHEME_BALANCED
+
+    if ($LASTEXITCODE -eq 0) {
+
+        Write-Host "Ausgewogenes Energieprofil aktiviert." -ForegroundColor Green
+        Write-AppLog "Ausgewogenes Energieprofil wiederhergestellt." "SUCCESS"
+    }
+    else {
+
+        Write-Host "Energieprofil konnte nicht wiederhergestellt werden." -ForegroundColor Red
+        Write-AppLog "Wiederherstellung des Energieprofils fehlgeschlagen. Exit Code: $LASTEXITCODE" "ERROR"
+    }
+
+    Write-Host ""
+    Read-Host "Enter drücken"
+}
+
+function Enable-GameDVR {
+
+    Clear-Host
+    Write-Host "Aktiviere Hintergrundaufnahme..." -ForegroundColor Yellow
+
+    try {
+
+        $gameConfig = "HKCU:\System\GameConfigStore"
+        $gameDvr = "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\GameDVR"
+
+        if (-not (Test-Path $gameConfig)) {
+            New-Item -Path $gameConfig -Force -ErrorAction Stop | Out-Null
+        }
+
+        if (-not (Test-Path $gameDvr)) {
+            New-Item -Path $gameDvr -Force -ErrorAction Stop | Out-Null
+        }
+
+        Set-ItemProperty -Path $gameConfig -Name "GameDVR_Enabled" -Type DWord -Value 1 -ErrorAction Stop
+        Set-ItemProperty -Path $gameDvr -Name "AppCaptureEnabled" -Type DWord -Value 1 -ErrorAction Stop
+
+        Write-Host "Hintergrundaufnahme aktiviert." -ForegroundColor Green
+        Write-AppLog "Game DVR wieder aktiviert." "SUCCESS"
+    }
+    catch {
+
+        Write-Host "Hintergrundaufnahme konnte nicht aktiviert werden." -ForegroundColor Red
+        Write-AppLog "Wiederherstellung von Game DVR fehlgeschlagen: $($_.Exception.Message)" "ERROR"
+    }
+
+    Write-Host ""
+    Read-Host "Enter drücken"
+}
+
+function Disable-StorageOptimization {
+
+    Clear-Host
+    Write-Host "Deaktiviere Speicheroptimierung..." -ForegroundColor Yellow
+
+    try {
+
+        Disable-StorageSense -ErrorAction Stop
+
+        Write-Host "Speicheroptimierung deaktiviert." -ForegroundColor Green
+        Write-AppLog "Speicheroptimierung deaktiviert." "SUCCESS"
+    }
+    catch {
+
+        Write-Host "Speicheroptimierung konnte nicht deaktiviert werden." -ForegroundColor DarkYellow
+        Write-AppLog "Deaktivierung der Speicheroptimierung fehlgeschlagen: $($_.Exception.Message)" "WARNING"
+    }
+
+    Write-Host ""
+    Read-Host "Enter drücken"
+}
+
+function Show-RecoveryMenu {
+
+    do {
+
+        Clear-Host
+
+        Write-Host "========================================" -ForegroundColor Cyan
+        Write-Host " Wiederherstellung" -ForegroundColor Cyan
+        Write-Host "========================================" -ForegroundColor Cyan
+        Write-Host ""
+        Write-Host "[1] Wiederherstellungspunkt erstellen"
+        Write-Host "[2] Ausgewogenes Energieprofil wiederherstellen"
+        Write-Host "[3] Game DVR wieder aktivieren"
+        Write-Host "[4] Speicheroptimierung deaktivieren"
+        Write-Host "[0] Zurück"
+        Write-Host ""
+
+        $recoveryChoice = Read-Host "Auswahl"
+
+        switch ($recoveryChoice) {
+
+            "1" { New-SystemRestorePoint }
+            "2" { Restore-BalancedPowerPlan }
+            "3" { Enable-GameDVR }
+            "4" { Disable-StorageOptimization }
+            "0" { }
+            default {
+                Write-Host "Ungültige Auswahl." -ForegroundColor Red
+                Start-Sleep -Seconds 1
+            }
+        }
+    } while ($recoveryChoice -ne "0")
+}
+function Show-DriveHealth {
+
+    Clear-Host
+
+    Write-Host `
+        "========================================" `
+        -ForegroundColor Cyan
+
+    Write-Host `
+        " SMART-/Laufwerksgesundheit" `
+        -ForegroundColor Cyan
+
+    Write-Host `
+        "========================================" `
+        -ForegroundColor Cyan
+
+    Write-Host ""
+    Write-AppLog "Laufwerksgesundheit wird abgefragt."
+
+    try {
+
+        $physicalDisks = Get-PhysicalDisk -ErrorAction Stop
+
+        foreach ($disk in $physicalDisks) {
+
+            Write-Host "Laufwerk: $($disk.FriendlyName)" -ForegroundColor Yellow
+            Write-Host "  Gesundheit: $($disk.HealthStatus)"
+            Write-Host "  Betriebsstatus: $($disk.OperationalStatus -join ', ')"
+            Write-Host "  Medium: $($disk.MediaType)"
+            Write-Host "  Größe: $(Format-DataSize ([double]$disk.Size))"
+            Write-Host ""
+        }
+    }
+    catch {
+
+        Write-Host "Physische Laufwerke konnten nicht ermittelt werden." -ForegroundColor DarkYellow
+        Write-AppLog "Laufwerksgesundheit nicht verfügbar: $($_.Exception.Message)" "WARNING"
+    }
+
+    try {
+
+        $smartStates = Get-CimInstance `
+            -Namespace "root\wmi" `
+            -ClassName "MSStorageDriver_FailurePredictStatus" `
+            -ErrorAction Stop
+
+        if ($smartStates) {
+
+            Write-Host "SMART-Status" -ForegroundColor Cyan
+
+            foreach ($smartState in $smartStates) {
+
+                $status = if ($smartState.PredictFailure) { "Warnung" } else { "OK" }
+                $color = if ($smartState.PredictFailure) { "Red" } else { "Green" }
+
+                Write-Host `
+                    "  $($smartState.InstanceName): $status" `
+                    -ForegroundColor $color
+            }
+        }
+        else {
+
+            Write-Host "Keine SMART-Daten verfügbar." -ForegroundColor DarkYellow
+        }
+    }
+    catch {
+
+        Write-Host "SMART-Daten werden von diesem System oder Laufwerk nicht bereitgestellt." -ForegroundColor DarkYellow
+        Write-AppLog "SMART-Daten nicht verfügbar: $($_.Exception.Message)" "WARNING"
+    }
+
+    Write-AppLog "Laufwerksgesundheit abgefragt." "SUCCESS"
+    Write-Host ""
+    Read-Host "Enter drücken"
+}
+function Write-GuiStatus {
+
+    param(
+        [Parameter(Mandatory = $true)]
+        [System.Windows.Forms.TextBox]$StatusBox,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Message
+    )
+
+    $timestamp = Get-Date -Format "HH:mm:ss"
+    $StatusBox.AppendText("[$timestamp] $Message`r`n")
+    $StatusBox.SelectionStart = $StatusBox.TextLength
+    $StatusBox.ScrollToCaret()
+}
+
+function Invoke-GuiCleanup {
+
+    param(
+        [Parameter(Mandatory = $true)]
+        [System.Windows.Forms.TextBox]$StatusBox,
+
+        [Parameter(Mandatory = $true)]
+        [System.Windows.Forms.Form]$Form
+    )
+
+    $tempPaths = @($env:TEMP, "$env:WINDIR\Temp")
+    $cleanupTargets = @()
+    $fileCount = [long]0
+    $estimatedBytes = [double]0
+
+    foreach ($path in $tempPaths) {
+
+        if (Test-Path $path) {
+
+            $cleanupTargets += $path
+
+            Get-ChildItem -Path $path -File -Recurse -Force -ErrorAction SilentlyContinue | ForEach-Object {
+                $fileCount++
+                $estimatedBytes += $_.Length
+            }
+        }
+    }
+
+    $message = "Gefunden: $fileCount Dateien`r`nGeschätzter Speichergewinn: $(Format-DataSize $estimatedBytes)`r`n`r`nJetzt bereinigen?"
+    $answer = [System.Windows.Forms.MessageBox]::Show(
+        $Form,
+        $message,
+        "Clean Up – Vorschau",
+        [System.Windows.Forms.MessageBoxButtons]::YesNo,
+        [System.Windows.Forms.MessageBoxIcon]::Question
+    )
+
+    if ($answer -ne [System.Windows.Forms.DialogResult]::Yes) {
+
+        Write-GuiStatus $StatusBox "Bereinigung abgebrochen; keine Änderungen vorgenommen."
+        return
+    }
+
+    $removed = 0
+    $failed = 0
+
+    foreach ($path in $cleanupTargets) {
+
+        Get-ChildItem -Path $path -Force -ErrorAction SilentlyContinue | ForEach-Object {
+
+            try {
+                Remove-Item -Path $_.FullName -Recurse -Force -ErrorAction Stop
+                $removed++
+            }
+            catch {
+                $failed++
+            }
+        }
+    }
+
+    try {
+        Clear-RecycleBin -Force -ErrorAction Stop
+        Write-GuiStatus $StatusBox "Papierkorb geleert."
+    }
+    catch {
+        Write-GuiStatus $StatusBox "Papierkorb konnte nicht vollständig geleert werden."
+    }
+
+    try {
+        Clear-DnsClientCache -ErrorAction Stop
+        Write-GuiStatus $StatusBox "DNS-Cache geleert."
+    }
+    catch {
+        Write-GuiStatus $StatusBox "DNS-Cache konnte nicht geleert werden."
+    }
+
+    Write-GuiStatus $StatusBox "Bereinigung abgeschlossen: $removed Einträge entfernt, $failed übersprungen."
+    Write-AppLog "GUI-Cleanup: $removed Einträge entfernt, $failed übersprungen." "SUCCESS"
+}
+
+function Start-MaintenanceGui {
+
+    Add-Type -AssemblyName System.Windows.Forms
+    Add-Type -AssemblyName System.Drawing
+    [System.Windows.Forms.Application]::EnableVisualStyles()
+
+    $form = New-Object System.Windows.Forms.Form
+    $form.Text = "Windows Maintenance Toolkit"
+    $form.Size = New-Object System.Drawing.Size(760, 620)
+    $form.MinimumSize = New-Object System.Drawing.Size(760, 620)
+    $form.StartPosition = "CenterScreen"
+    $form.BackColor = [System.Drawing.Color]::FromArgb(30, 34, 43)
+    $form.ForeColor = [System.Drawing.Color]::White
+
+    $title = New-Object System.Windows.Forms.Label
+    $title.Text = "Windows Maintenance Toolkit"
+    $title.Font = New-Object System.Drawing.Font("Segoe UI", 18, [System.Drawing.FontStyle]::Bold)
+    $title.ForeColor = [System.Drawing.Color]::FromArgb(92, 200, 255)
+    $title.AutoSize = $true
+    $title.Location = New-Object System.Drawing.Point(24, 18)
+    $form.Controls.Add($title)
+
+    $subtitle = New-Object System.Windows.Forms.Label
+    $subtitle.Text = "Wartung, Bereinigung und Wiederherstellung"
+    $subtitle.Font = New-Object System.Drawing.Font("Segoe UI", 10)
+    $subtitle.ForeColor = [System.Drawing.Color]::LightGray
+    $subtitle.AutoSize = $true
+    $subtitle.Location = New-Object System.Drawing.Point(27, 55)
+    $form.Controls.Add($subtitle)
+
+    $statusBox = New-Object System.Windows.Forms.TextBox
+    $statusBox.Multiline = $true
+    $statusBox.ReadOnly = $true
+    $statusBox.ScrollBars = "Vertical"
+    $statusBox.BackColor = [System.Drawing.Color]::FromArgb(20, 23, 30)
+    $statusBox.ForeColor = [System.Drawing.Color]::Gainsboro
+    $statusBox.BorderStyle = "FixedSingle"
+    $statusBox.Font = New-Object System.Drawing.Font("Consolas", 9)
+    $statusBox.Location = New-Object System.Drawing.Point(24, 405)
+    $statusBox.Size = New-Object System.Drawing.Size(695, 135)
+    $form.Controls.Add($statusBox)
+
+    function Add-MaintenanceButton {
+
+        param(
+            [string]$Text,
+            [int]$X,
+            [int]$Y,
+            [scriptblock]$Action
+        )
+
+        $button = New-Object System.Windows.Forms.Button
+        $button.Text = $Text
+        $button.Size = New-Object System.Drawing.Size(330, 48)
+        $button.Location = New-Object System.Drawing.Point($X, $Y)
+        $button.BackColor = [System.Drawing.Color]::FromArgb(48, 58, 76)
+        $button.ForeColor = [System.Drawing.Color]::White
+        $button.FlatStyle = "Flat"
+        $button.Font = New-Object System.Drawing.Font("Segoe UI", 10)
+        $button.Add_Click($Action)
+        $form.Controls.Add($button)
+    }
+
+    Add-MaintenanceButton "Systeminformationen" 24 100 {
+        try {
+            $os = Get-CimInstance Win32_OperatingSystem -ErrorAction Stop
+            $disk = Get-CimInstance Win32_LogicalDisk -Filter "DeviceID='C:'" -ErrorAction Stop
+            Write-GuiStatus $statusBox "Windows: $($os.Caption)"
+            Write-GuiStatus $statusBox "C: $(Format-DataSize ([double]$disk.FreeSpace)) frei von $(Format-DataSize ([double]$disk.Size))"
+        }
+        catch {
+            Write-GuiStatus $statusBox "Systeminformationen konnten nicht ermittelt werden."
+        }
+    }
+
+    Add-MaintenanceButton "Clean Up" 365 100 {
+        Invoke-GuiCleanup $statusBox $form
+    }
+
+    Add-MaintenanceButton "DNS-Cache leeren" 24 160 {
+        try {
+            Clear-DnsClientCache -ErrorAction Stop
+            Write-GuiStatus $statusBox "DNS-Cache geleert."
+        }
+        catch {
+            Write-GuiStatus $statusBox "DNS-Cache konnte nicht geleert werden."
+        }
+    }
+
+    Add-MaintenanceButton "SMART-/Laufwerksgesundheit" 365 160 {
+        try {
+            Get-PhysicalDisk -ErrorAction Stop | ForEach-Object {
+                Write-GuiStatus $statusBox "$($_.FriendlyName): Gesundheit $($_.HealthStatus), Status $($_.OperationalStatus -join ', ')"
+            }
+        }
+        catch {
+            Write-GuiStatus $statusBox "Laufwerksgesundheit konnte nicht ermittelt werden."
+        }
+    }
+
+    Add-MaintenanceButton "Wiederherstellungspunkt erstellen" 24 220 {
+        try {
+            Checkpoint-Computer -Description "Windows Maintenance Toolkit" -RestorePointType "MODIFY_SETTINGS" -ErrorAction Stop
+            Write-GuiStatus $statusBox "Wiederherstellungspunkt erstellt."
+        }
+        catch {
+            Write-GuiStatus $statusBox "Wiederherstellungspunkt konnte nicht erstellt werden."
+        }
+    }
+
+    Add-MaintenanceButton "Ausgewogenes Energieprofil" 365 220 {
+        powercfg /setactive SCHEME_BALANCED
+        if ($LASTEXITCODE -eq 0) {
+            Write-GuiStatus $statusBox "Ausgewogenes Energieprofil aktiviert."
+        }
+        else {
+            Write-GuiStatus $statusBox "Energieprofil konnte nicht geändert werden."
+        }
+    }
+
+    Add-MaintenanceButton "Game DVR deaktivieren" 24 280 {
+        try {
+            Set-ItemProperty -Path "HKCU:\System\GameConfigStore" -Name "GameDVR_Enabled" -Type DWord -Value 0 -ErrorAction Stop
+            Set-ItemProperty -Path "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\GameDVR" -Name "AppCaptureEnabled" -Type DWord -Value 0 -ErrorAction Stop
+            Write-GuiStatus $statusBox "Game DVR deaktiviert."
+        }
+        catch {
+            Write-GuiStatus $statusBox "Game DVR konnte nicht deaktiviert werden."
+        }
+    }
+
+    Add-MaintenanceButton "Game DVR aktivieren" 365 280 {
+        Enable-GameDVR
+        Write-GuiStatus $statusBox "Game DVR-Aktivierung ausgeführt."
+    }
+
+    Add-MaintenanceButton "Speicheroptimierung aktivieren" 24 340 {
+        try {
+            Enable-StorageSense -ErrorAction Stop
+            Write-GuiStatus $statusBox "Speicheroptimierung aktiviert."
+        }
+        catch {
+            Write-GuiStatus $statusBox "Speicheroptimierung konnte nicht aktiviert werden."
+        }
+    }
+
+    Add-MaintenanceButton "Fenster schließen" 365 340 {
+        $form.Close()
+    }
+
+    Write-GuiStatus $statusBox "GUI bereit. Wähle eine Aktion aus."
+    [void]$form.ShowDialog()
+}
+
+# ============================================================
+# Hauptmenü
+# ============================================================
+
+do {
+
+    Clear-Host
+
+    Write-Host `
+        "========================================" `
+        -ForegroundColor Cyan
+
+    Write-Host `
+        " Windows Maintenance Toolkit v1.1" `
+        -ForegroundColor Cyan
+
+    Write-Host `
+        "========================================" `
+        -ForegroundColor Cyan
+
+    Write-Host ""
+
+    Write-Host "[1] Systeminformationen"
+    Write-Host "[2] Clean Up"
+    Write-Host "[3] DNS Cache"
+    Write-Host "[4] Component Store"
+    Write-Host "[5] Systemdateien prüfen"
+    Write-Host "[6] Energieprofil"
+    Write-Host "[7] Game DVR deaktivieren"
+    Write-Host "[8] Speicheroptimierung"
+    Write-Host "[9] SMART-/Laufwerksgesundheit"
+    Write-Host "[10] Wiederherstellung"
+    Write-Host "[11] Grafische Oberfläche"
+    Write-Host "[0] Beenden"
+
+    Write-Host ""
+
+    $choice = Read-Host "Auswahl"
+
+    Write-AppLog `
+        "Menüauswahl: $choice"
+
+    switch ($choice) {
+
+        "1" {
+            Show-SystemInfo
+        }
+
+        "2" {
+            Invoke-Cleanup
+        }
+
+        "3" {
+            Clear-DNSCache
+        }
+
+        "4" {
+            Invoke-ComponentCleanup
+        }
+
+        "5" {
+            Invoke-SystemRepair
+        }
+
+        "6" {
+            Set-HighPerformance
+        }
+
+        "7" {
+            Disable-GameDVR
+        }
+
+        "8" {
+            Enable-StorageOptimization
+        }
+
+        "9" {
+            Show-DriveHealth
+        }
+
+        "10" {
+            Show-RecoveryMenu
+        }
+
+        "11" {
+            Start-MaintenanceGui
+        }
+
+        "0" {
+
+            Write-AppLog `
+                "Windows Maintenance Toolkit beendet." `
+                "SUCCESS"
+
+            Clear-Host
+
+            Write-Host ""
+
+            Write-Host `
+                "Windows Maintenance Toolkit beendet." `
+                -ForegroundColor Cyan
+
+            Write-Host ""
+        }
+
+        default {
+
+            Write-Host ""
+
+            Write-Host `
+                "Ungültige Auswahl." `
+                -ForegroundColor Red
+
+            Write-AppLog `
+                "Ungültige Menüauswahl: $choice" `
+                "WARNING"
+
+            Start-Sleep -Seconds 1
+        }
+    }
+
+} while ($choice -ne "0")
+# Ende des Hauptmenüs

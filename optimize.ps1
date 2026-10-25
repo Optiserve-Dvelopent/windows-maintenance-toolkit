@@ -1055,6 +1055,273 @@ function Show-DriveHealth {
     Write-Host ""
     Read-Host "Enter drücken"
 }
+function Write-GuiStatus {
+
+    param(
+        [Parameter(Mandatory = $true)]
+        [System.Windows.Forms.TextBox]$StatusBox,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Message
+    )
+
+    $timestamp = Get-Date -Format "HH:mm:ss"
+    $StatusBox.AppendText("[$timestamp] $Message`r`n")
+    $StatusBox.SelectionStart = $StatusBox.TextLength
+    $StatusBox.ScrollToCaret()
+}
+
+function Invoke-GuiCleanup {
+
+    param(
+        [Parameter(Mandatory = $true)]
+        [System.Windows.Forms.TextBox]$StatusBox,
+
+        [Parameter(Mandatory = $true)]
+        [System.Windows.Forms.Form]$Form
+    )
+
+    $tempPaths = @($env:TEMP, "$env:WINDIR\Temp")
+    $cleanupTargets = @()
+    $fileCount = [long]0
+    $estimatedBytes = [double]0
+
+    foreach ($path in $tempPaths) {
+
+        if (Test-Path $path) {
+
+            $cleanupTargets += $path
+
+            Get-ChildItem -Path $path -File -Recurse -Force -ErrorAction SilentlyContinue | ForEach-Object {
+                $fileCount++
+                $estimatedBytes += $_.Length
+            }
+        }
+    }
+
+    $message = "Gefunden: $fileCount Dateien`r`nGeschätzter Speichergewinn: $(Format-DataSize $estimatedBytes)`r`n`r`nJetzt bereinigen?"
+    $answer = [System.Windows.Forms.MessageBox]::Show(
+        $Form,
+        $message,
+        "Clean Up – Vorschau",
+        [System.Windows.Forms.MessageBoxButtons]::YesNo,
+        [System.Windows.Forms.MessageBoxIcon]::Question
+    )
+
+    if ($answer -ne [System.Windows.Forms.DialogResult]::Yes) {
+
+        Write-GuiStatus $StatusBox "Bereinigung abgebrochen; keine Änderungen vorgenommen."
+        return
+    }
+
+    $removed = 0
+    $failed = 0
+
+    foreach ($path in $cleanupTargets) {
+
+        Get-ChildItem -Path $path -Force -ErrorAction SilentlyContinue | ForEach-Object {
+
+            try {
+                Remove-Item -Path $_.FullName -Recurse -Force -ErrorAction Stop
+                $removed++
+            }
+            catch {
+                $failed++
+            }
+        }
+    }
+
+    try {
+        Clear-RecycleBin -Force -ErrorAction Stop
+        Write-GuiStatus $StatusBox "Papierkorb geleert."
+    }
+    catch {
+        Write-GuiStatus $StatusBox "Papierkorb konnte nicht vollständig geleert werden."
+    }
+
+    try {
+        Clear-DnsClientCache -ErrorAction Stop
+        Write-GuiStatus $StatusBox "DNS-Cache geleert."
+    }
+    catch {
+        Write-GuiStatus $StatusBox "DNS-Cache konnte nicht geleert werden."
+    }
+
+    Write-GuiStatus $StatusBox "Bereinigung abgeschlossen: $removed Einträge entfernt, $failed übersprungen."
+    Write-AppLog "GUI-Cleanup: $removed Einträge entfernt, $failed übersprungen." "SUCCESS"
+}
+
+function Start-MaintenanceGui {
+
+    Add-Type -AssemblyName System.Windows.Forms
+    Add-Type -AssemblyName System.Drawing
+    [System.Windows.Forms.Application]::EnableVisualStyles()
+
+    $form = New-Object System.Windows.Forms.Form
+    $form.Text = "Windows Maintenance Toolkit"
+    $form.Size = New-Object System.Drawing.Size(760, 620)
+    $form.MinimumSize = New-Object System.Drawing.Size(760, 620)
+    $form.StartPosition = "CenterScreen"
+    $form.BackColor = [System.Drawing.Color]::FromArgb(30, 34, 43)
+    $form.ForeColor = [System.Drawing.Color]::White
+
+    $title = New-Object System.Windows.Forms.Label
+    $title.Text = "Windows Maintenance Toolkit"
+    $title.Font = New-Object System.Drawing.Font("Segoe UI", 18, [System.Drawing.FontStyle]::Bold)
+    $title.ForeColor = [System.Drawing.Color]::FromArgb(92, 200, 255)
+    $title.AutoSize = $true
+    $title.Location = New-Object System.Drawing.Point(24, 18)
+    $form.Controls.Add($title)
+
+    $subtitle = New-Object System.Windows.Forms.Label
+    $subtitle.Text = "Wartung, Bereinigung und Wiederherstellung"
+    $subtitle.Font = New-Object System.Drawing.Font("Segoe UI", 10)
+    $subtitle.ForeColor = [System.Drawing.Color]::LightGray
+    $subtitle.AutoSize = $true
+    $subtitle.Location = New-Object System.Drawing.Point(27, 55)
+    $form.Controls.Add($subtitle)
+
+    $statusBox = New-Object System.Windows.Forms.TextBox
+    $statusBox.Multiline = $true
+    $statusBox.ReadOnly = $true
+    $statusBox.ScrollBars = "Vertical"
+    $statusBox.BackColor = [System.Drawing.Color]::FromArgb(20, 23, 30)
+    $statusBox.ForeColor = [System.Drawing.Color]::Gainsboro
+    $statusBox.BorderStyle = "FixedSingle"
+    $statusBox.Font = New-Object System.Drawing.Font("Consolas", 9)
+    $statusBox.Location = New-Object System.Drawing.Point(24, 405)
+    $statusBox.Size = New-Object System.Drawing.Size(695, 135)
+    $form.Controls.Add($statusBox)
+
+    function Add-MaintenanceButton {
+
+        param(
+            [string]$Text,
+            [int]$X,
+            [int]$Y,
+            [scriptblock]$Action
+        )
+
+        $button = New-Object System.Windows.Forms.Button
+        $button.Text = $Text
+        $button.Size = New-Object System.Drawing.Size(330, 48)
+        $button.Location = New-Object System.Drawing.Point($X, $Y)
+        $button.BackColor = [System.Drawing.Color]::FromArgb(48, 58, 76)
+        $button.ForeColor = [System.Drawing.Color]::White
+        $button.FlatStyle = "Flat"
+        $button.Font = New-Object System.Drawing.Font("Segoe UI", 10)
+        $button.Add_Click($Action)
+        $form.Controls.Add($button)
+    }
+
+    Add-MaintenanceButton "Systeminformationen" 24 100 {
+        try {
+            $os = Get-CimInstance Win32_OperatingSystem -ErrorAction Stop
+            $disk = Get-CimInstance Win32_LogicalDisk -Filter "DeviceID='C:'" -ErrorAction Stop
+            Write-GuiStatus $statusBox "Windows: $($os.Caption)"
+            Write-GuiStatus $statusBox "C: $(Format-DataSize ([double]$disk.FreeSpace)) frei von $(Format-DataSize ([double]$disk.Size))"
+        }
+        catch {
+            Write-GuiStatus $statusBox "Systeminformationen konnten nicht ermittelt werden."
+        }
+    }
+
+    Add-MaintenanceButton "Clean Up" 365 100 {
+        Invoke-GuiCleanup $statusBox $form
+    }
+
+    Add-MaintenanceButton "DNS-Cache leeren" 24 160 {
+        try {
+            Clear-DnsClientCache -ErrorAction Stop
+            Write-GuiStatus $statusBox "DNS-Cache geleert."
+        }
+        catch {
+            Write-GuiStatus $statusBox "DNS-Cache konnte nicht geleert werden."
+        }
+    }
+
+    Add-MaintenanceButton "SMART-/Laufwerksgesundheit" 365 160 {
+        try {
+            Get-PhysicalDisk -ErrorAction Stop | ForEach-Object {
+                Write-GuiStatus $statusBox "$($_.FriendlyName): Gesundheit $($_.HealthStatus), Status $($_.OperationalStatus -join ', ')"
+            }
+        }
+        catch {
+            Write-GuiStatus $statusBox "Laufwerksgesundheit konnte nicht ermittelt werden."
+        }
+    }
+
+    Add-MaintenanceButton "Wiederherstellungspunkt erstellen" 24 220 {
+        try {
+            Checkpoint-Computer -Description "Windows Maintenance Toolkit" -RestorePointType "MODIFY_SETTINGS" -ErrorAction Stop
+            Write-GuiStatus $statusBox "Wiederherstellungspunkt erstellt."
+        }
+        catch {
+            Write-GuiStatus $statusBox "Wiederherstellungspunkt konnte nicht erstellt werden."
+        }
+    }
+
+    Add-MaintenanceButton "Ausgewogenes Energieprofil" 365 220 {
+        powercfg /setactive SCHEME_BALANCED
+        if ($LASTEXITCODE -eq 0) {
+            Write-GuiStatus $statusBox "Ausgewogenes Energieprofil aktiviert."
+        }
+        else {
+            Write-GuiStatus $statusBox "Energieprofil konnte nicht geändert werden."
+        }
+    }
+
+    Add-MaintenanceButton "Game DVR deaktivieren" 24 280 {
+        try {
+            Set-ItemProperty -Path "HKCU:\System\GameConfigStore" -Name "GameDVR_Enabled" -Type DWord -Value 0 -ErrorAction Stop
+            Set-ItemProperty -Path "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\GameDVR" -Name "AppCaptureEnabled" -Type DWord -Value 0 -ErrorAction Stop
+            Write-GuiStatus $statusBox "Game DVR deaktiviert."
+        }
+        catch {
+            Write-GuiStatus $statusBox "Game DVR konnte nicht deaktiviert werden."
+        }
+    }
+
+    Add-MaintenanceButton "Game DVR aktivieren" 365 280 {
+        try {
+            $gameConfig = "HKCU:\System\GameConfigStore"
+            $gameDvr = "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\GameDVR"
+
+            if (-not (Test-Path $gameConfig)) {
+                New-Item -Path $gameConfig -Force -ErrorAction Stop | Out-Null
+            }
+
+            if (-not (Test-Path $gameDvr)) {
+                New-Item -Path $gameDvr -Force -ErrorAction Stop | Out-Null
+            }
+
+            Set-ItemProperty -Path $gameConfig -Name "GameDVR_Enabled" -Type DWord -Value 1 -ErrorAction Stop
+            Set-ItemProperty -Path $gameDvr -Name "AppCaptureEnabled" -Type DWord -Value 1 -ErrorAction Stop
+            Write-GuiStatus $statusBox "Game DVR aktiviert."
+        }
+        catch {
+            Write-GuiStatus $statusBox "Game DVR konnte nicht aktiviert werden."
+        }
+    }
+
+    Add-MaintenanceButton "Speicheroptimierung aktivieren" 24 340 {
+        try {
+            Enable-StorageSense -ErrorAction Stop
+            Write-GuiStatus $statusBox "Speicheroptimierung aktiviert."
+        }
+        catch {
+            Write-GuiStatus $statusBox "Speicheroptimierung konnte nicht aktiviert werden."
+        }
+    }
+
+    Add-MaintenanceButton "Fenster schließen" 365 340 {
+        $form.Close()
+    }
+
+    Write-GuiStatus $statusBox "GUI bereit. Wähle eine Aktion aus."
+    [void]$form.ShowDialog()
+}
+
 # ============================================================
 # Hauptmenü
 # ============================================================
@@ -1087,6 +1354,7 @@ do {
     Write-Host "[8] Speicheroptimierung"
     Write-Host "[9] SMART-/Laufwerksgesundheit"
     Write-Host "[10] Wiederherstellung"
+    Write-Host "[11] Grafische Oberfläche"
     Write-Host "[0] Beenden"
 
     Write-Host ""
@@ -1136,6 +1404,10 @@ do {
 
         "10" {
             Show-RecoveryMenu
+        }
+
+        "11" {
+            Start-MaintenanceGui
         }
 
         "0" {
